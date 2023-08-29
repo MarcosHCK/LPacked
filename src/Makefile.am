@@ -15,9 +15,10 @@
 # along with LPacked. If not, see <http://www.gnu.org/licenses/>.
 #
 
-bin_PROGRAMS=lpacked
+bin_PROGRAMS=lpacked 
+noinst_HEADERS=compat.h execute.h pack.h 
 
-lpacked_CFLAGS=$(ARCHIVE_CFLAGS) $(GLIB_CFLAGS) -flto 
-lpacked_LDADD=$(ARCHIVE_LIBS) $(GLIB_LIBS) 
+lpacked_CFLAGS=$(ARCHIVE_CFLAGS) $(GLIB_CFLAGS) $(LUA_CFLAGS) -flto 
+lpacked_LDADD=$(ARCHIVE_LIBS) $(GLIB_LIBS) $(LUA_LIBS) 
 lpacked_LDFLAGS=-flto 
-lpacked_SOURCES=lpacked.c 
+lpacked_SOURCES=compat.c execute.c lpacked.c pack.c  
