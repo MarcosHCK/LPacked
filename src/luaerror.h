@@ -14,15 +14,17 @@
  * You should have received a copy of the GNU General Public License
  * along with LPacked. If not, see <http://www.gnu.org/licenses/>.
  */
-#include <config.h>
-#include <lauxlib.h>
-#include <lua.h>
-#include <luaerror.h>
-#include <lualib.h>
-#include <execute.h>
-#include <compat.h>
+#pragma once
+#include <glib.h>
 
-void do_execute (const gchar* file, GError** error)
-{
-  g_assert_not_reached ();
+#define LUA_ERROR (lua_error_quark ())
+
+#if __cplusplus
+extern "C" {
+#endif // __cplusplus
+
+  G_GNUC_INTERNAL GQuark lua_error_quark (void) G_GNUC_CONST;
+
+#if __cplusplus
 }
+#endif // __cplusplus

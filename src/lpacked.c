@@ -19,6 +19,8 @@
 #include <glib.h>
 #include <pack.h>
 
+G_DEFINE_QUARK (lua-error-quark, lua_error);
+
 #define report(error) G_STMT_START { \
     const guint __code = (error)->code; \
     const gchar* __domain = g_quark_to_string ((error)->domain); \
@@ -31,6 +33,8 @@ int main (int argc, char* argv[])
   gchar** arguments = NULL;
   GError* tmperr = NULL;
   GOptionContext* context = NULL;
+  GOptionGroup* execute_group = NULL;
+  GOptionGroup* pack_group = NULL;
 
   const gchar* parameter_string = NULL;
   const gchar* description = "";
@@ -38,6 +42,9 @@ int main (int argc, char* argv[])
   const gchar* translation_domain = "en_US";
 
   context = g_option_context_new (parameter_string);
+  execute_group = g_option_group_new ("execute", "Execute mode specific options", "Show execute mode specific options", NULL, NULL);
+  pack_group = g_option_group_new ("pack", "Pack mode specific options", "Show pack mode specific options", NULL, NULL);
+
   g_option_context_set_description (context, description);
   g_option_context_set_help_enabled (context, TRUE);
   g_option_context_set_ignore_unknown_options (context, FALSE);
@@ -81,6 +88,7 @@ int main (int argc, char* argv[])
 
   const gchar* execute = NULL;
   const gchar* pack = NULL;
+  const gchar* pack_output = NULL;
 
   const GOptionEntry main_entries [] = 
     {
@@ -89,7 +97,24 @@ int main (int argc, char* argv[])
       G_OPTION_ENTRY_NULL,
     };
 
+  const GOptionEntry execute_entries [] =
+    {
+      G_OPTION_ENTRY_NULL,
+    };
+
+  const GOptionEntry pack_entries [] =
+    {
+      { "output", 'o', 0, G_OPTION_ARG_FILENAME, &pack_output, "Output packed project into FILE", "FILE", },
+      G_OPTION_ENTRY_NULL,
+    };
+
+  g_option_group_add_entries (execute_group, execute_entries);
+  g_option_group_set_translation_domain (execute_group, translation_domain);
+  g_option_group_add_entries (pack_group, pack_entries);
+  g_option_group_set_translation_domain (pack_group, translation_domain);
   g_option_context_add_main_entries (context, main_entries, translation_domain);
+  g_option_context_add_group (context, execute_group);
+  g_option_context_add_group (context, pack_group);
   g_option_context_parse_strv (context, &arguments, &tmperr);
   g_option_context_free (context);
 
@@ -115,7 +140,7 @@ int main (int argc, char* argv[])
 
       if (pack != NULL)
         {
-          if ((do_pack (pack, &tmperr)), G_UNLIKELY (tmperr != NULL))
+          if ((do_pack (pack, pack_output, &tmperr)), G_UNLIKELY (tmperr != NULL))
             {
               report (tmperr);
               g_strfreev (arguments);

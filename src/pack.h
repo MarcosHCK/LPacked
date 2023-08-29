@@ -21,7 +21,7 @@
 extern "C" {
 #endif // __cplusplus
 
-  G_GNUC_INTERNAL void do_pack (const gchar* filename, GError** error);
+  G_GNUC_INTERNAL void do_pack (const gchar* filename, const gchar* output, GError** error);
 
 #if __cplusplus
 }
