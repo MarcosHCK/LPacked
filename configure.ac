@@ -128,9 +128,7 @@ PKG_PROG_PKG_CONFIG
 # Note: keep sorted alphabetically 
 #
 
-PKG_CHECK_MODULES([GLIB], [glib-2.0])
-PKG_CHECK_MODULES([GOBJECT], [gobject-2.0])
-PKG_CHECK_MODULES([ZIP], [libzip])
+PKG_CHECK_MODULES([GIO], [gio-2.0])
 
 PKG_CHECK_EXISTS([luajit], [
 AC_DEFINE_UNQUOTED([D_LUAJIT], [1], [Whether lua library is LuaJIT])

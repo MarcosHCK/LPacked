@@ -15,138 +15,124 @@
  * along with LPacked. If not, see <http://www.gnu.org/licenses/>.
  */
 #include <config.h>
-#include <execute.h>
-#include <glib.h>
-#include <pack.h>
+#include <descriptor.h>
 
-G_DEFINE_QUARK (lua-error-quark, lua_error);
+struct _LPackedApplication
+{
+  GApplication parent;
 
-#define report(error) G_STMT_START { \
-    const guint __code = (error)->code; \
-    const gchar* __domain = g_quark_to_string ((error)->domain); \
-    const gchar* __message = (error)->message; \
-    g_critical ("(" G_STRLOC "): %s: %i: %s", __domain, __code, __message); \
-  } G_STMT_END
+  /*<private>*/
+  GOptionEntry* execute_entries;
+  GOptionEntry* main_entries;
+  GOptionEntry* pack_entries;
+
+  const gchar* execute;
+  const gchar* pack;
+  const gchar* pack_output;
+};
+
+struct _LPackedApplicationClass
+{
+  GApplicationClass parent;
+};
+
+G_DECLARE_FINAL_TYPE (LPackedApplication, lpacked_application, LPACKED, APPLICATION, GApplication);
+G_DEFINE_FINAL_TYPE (LPackedApplication, lpacked_application, G_TYPE_APPLICATION);
 
 int main (int argc, char* argv[])
 {
-  gchar** arguments = NULL;
-  GError* tmperr = NULL;
-  GOptionContext* context = NULL;
+  gpointer app = g_object_new (lpacked_application_get_type (), NULL);
+  gint result = g_application_run (app, argc, argv);
+return (g_object_unref (app), result);
+}
+
+static void lpacked_application_class_activate (GApplication* pself)
+{
+  LPackedApplication* self = (gpointer) pself;
+
+  if (self->pack != NULL)
+    {
+      GFile* file = NULL;
+      GError* tmperr = NULL;
+      LPackedDescriptor* desc = NULL;
+
+      file = g_file_new_for_commandline_arg (self->pack);
+      desc = lpacked_descriptor_new_from_gfile (file, &tmperr);
+        g_object_unref (file);
+
+      if (G_UNLIKELY (tmperr != NULL))
+        {
+          g_assert_no_error (tmperr);
+        }
+    }
+}
+
+static void lpacked_application_class_finalize (GObject* pself)
+{
+  g_free (G_STRUCT_MEMBER (gpointer, pself, G_STRUCT_OFFSET (LPackedApplication, execute_entries)));
+  g_free (G_STRUCT_MEMBER (gpointer, pself, G_STRUCT_OFFSET (LPackedApplication, main_entries)));
+  g_free (G_STRUCT_MEMBER (gpointer, pself, G_STRUCT_OFFSET (LPackedApplication, pack_entries)));
+  G_OBJECT_CLASS (lpacked_application_parent_class)->finalize (pself);
+}
+
+static void lpacked_application_class_constructed (GObject* pself)
+{
+  LPackedApplication* self = (gpointer) pself;
   GOptionGroup* execute_group = NULL;
   GOptionGroup* pack_group = NULL;
+
+  G_OBJECT_CLASS (lpacked_application_parent_class)->constructed (pself);
 
   const gchar* parameter_string = NULL;
   const gchar* description = "";
   const gchar* summary = "";
   const gchar* translation_domain = "en_US";
 
-  context = g_option_context_new (parameter_string);
-  execute_group = g_option_group_new ("execute", "Execute mode specific options", "Show execute mode specific options", NULL, NULL);
-  pack_group = g_option_group_new ("pack", "Pack mode specific options", "Show pack mode specific options", NULL, NULL);
-
-  g_option_context_set_description (context, description);
-  g_option_context_set_help_enabled (context, TRUE);
-  g_option_context_set_ignore_unknown_options (context, FALSE);
-  g_option_context_set_strict_posix (context, FALSE);
-  g_option_context_set_summary (context, summary);
-  g_option_context_set_translation_domain (context, translation_domain);
-
-#ifndef G_OS_WIN32
-  if (TRUE)
-    {
-      gint i;
-
-      arguments = g_new (gchar*, argc + 1);
-      arguments [argc] = NULL;
-
-      for (i = 0; i < argc; ++i)
-        {
-          arguments [i] = g_strdup (argv [i]);
-        }
-    }
-#else // G_OS_WIN32
-  if (TRUE)
-    {
-      gchar** new_argv;
-      guint i, new_argc;
-
-      new_argv = g_win32_get_command_line ();
-      new_argc = g_strv_length (new_argv);
-      arguments = new_argv;
-
-        if (new_argc > argc)
-          {
-            for (i = 0; i < (new_argc - argc); ++i)
-              g_free (new_argv [i]);
-              memmove (&new_argv [0],
-                       &new_argv [new_argc - argc],
-                       sizeof (new_argv [0]) * (argc + 1));
-          }
-    }
-#endif // G_OS_WIN32
-
-  const gchar* execute = NULL;
-  const gchar* pack = NULL;
-  const gchar* pack_output = NULL;
-
-  const GOptionEntry main_entries [] = 
-    {
-      { "execute", 'e', 0, G_OPTION_ARG_FILENAME, &execute, "Execute packed application FILE", "FILE", },
-      { "pack", 'p', 0, G_OPTION_ARG_FILENAME, &pack, "Create a packed application from application description in FILE", "FILE", },
-      G_OPTION_ENTRY_NULL,
-    };
-
   const GOptionEntry execute_entries [] =
     {
       G_OPTION_ENTRY_NULL,
     };
 
-  const GOptionEntry pack_entries [] =
+  const GOptionEntry main_entries [] = 
     {
-      { "output", 'o', 0, G_OPTION_ARG_FILENAME, &pack_output, "Output packed project into FILE", "FILE", },
+      { "execute", 'e', 0, G_OPTION_ARG_FILENAME, & self->execute, "Execute packed application FILE", "FILE", },
+      { "pack", 'p', 0, G_OPTION_ARG_FILENAME, & self->pack, "Create a packed application from application description in FILE", "FILE", },
       G_OPTION_ENTRY_NULL,
     };
 
-  g_option_group_add_entries (execute_group, execute_entries);
+  const GOptionEntry pack_entries [] =
+    {
+      { "output", 'o', 0, G_OPTION_ARG_FILENAME, & self->pack_output, "Output packed project into FILE", "FILE", },
+      G_OPTION_ENTRY_NULL,
+    };
+
+  self->execute_entries = g_memdup2 (&execute_entries, sizeof (execute_entries));
+  self->main_entries = g_memdup2 (&main_entries, sizeof (main_entries));
+  self->pack_entries = g_memdup2 (&pack_entries, sizeof (pack_entries));
+
+  execute_group = g_option_group_new ("execute", "Execute mode specific options", "Show execute mode specific options", NULL, NULL);
+  pack_group = g_option_group_new ("pack", "Pack mode specific options", "Show pack mode specific options", NULL, NULL);
+
+  g_application_add_main_option_entries (G_APPLICATION (pself), self->main_entries);
+  g_application_set_option_context_description (G_APPLICATION (pself), description);
+  g_application_set_option_context_parameter_string (G_APPLICATION (pself), parameter_string);
+  g_application_set_option_context_summary (G_APPLICATION (pself), summary);
+
+  g_option_group_add_entries (execute_group, self->execute_entries);
   g_option_group_set_translation_domain (execute_group, translation_domain);
-  g_option_group_add_entries (pack_group, pack_entries);
+  g_application_add_option_group (G_APPLICATION (pself), execute_group);
+  g_option_group_add_entries (pack_group, self->pack_entries);
   g_option_group_set_translation_domain (pack_group, translation_domain);
-  g_option_context_add_main_entries (context, main_entries, translation_domain);
-  g_option_context_add_group (context, execute_group);
-  g_option_context_add_group (context, pack_group);
-  g_option_context_parse_strv (context, &arguments, &tmperr);
-  g_option_context_free (context);
+  g_application_add_option_group (G_APPLICATION (pself), pack_group);
+}
 
-  if (G_UNLIKELY (tmperr != NULL))
-    {
-      report (tmperr);
-      g_error_free (tmperr);
-      g_strfreev (arguments);
-      return 1;
-    }
-  else
-    {
-      if (execute != NULL)
-        {
-          if ((do_execute (execute, &tmperr)), G_UNLIKELY (tmperr != NULL))
-            {
-              report (tmperr);
-              g_error_free (tmperr);
-              g_strfreev (arguments);
-              return 1;
-            }
-        }
+static void lpacked_application_class_init (LPackedApplicationClass* klass)
+{
+  G_APPLICATION_CLASS (klass)->activate = lpacked_application_class_activate;
+  G_OBJECT_CLASS (klass)->finalize = lpacked_application_class_finalize;
+  G_OBJECT_CLASS (klass)->constructed = lpacked_application_class_constructed;
+}
 
-      if (pack != NULL)
-        {
-          if ((do_pack (pack, pack_output, &tmperr)), G_UNLIKELY (tmperr != NULL))
-            {
-              report (tmperr);
-              g_strfreev (arguments);
-              return 1;
-            }
-        }
-    }
-return (g_strfreev (arguments), 0);
+static void lpacked_application_init (LPackedApplication* self)
+{
 }

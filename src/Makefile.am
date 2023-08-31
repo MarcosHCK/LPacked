@@ -16,9 +16,15 @@
 #
 
 bin_PROGRAMS=lpacked 
-noinst_HEADERS=compat.h execute.h luaerror.h pack.h 
+pkglib_LTLIBRARIES=liblpacked.la 
+noinst_HEADERS=compat.h descriptor.h 
 
-lpacked_CFLAGS=$(GLIB_CFLAGS) $(GOBJECT_CFLAGS) $(LUA_CFLAGS) $(ZIP_CFLAGS) -flto 
-lpacked_LDADD=$(GLIB_LIBS) $(GOBJECT_LIBS) $(LUA_LIBS) $(ZIP_LIBS) 
+liblpacked_la_CFLAGS=$(GIO_CFLAGS) $(LUA_CFLAGS) -flto 
+liblpacked_la_LDFLAGS=-flto 
+liblpacked_la_LIBADD=$(GIO_LIBS) $(LUA_LIBS) 
+liblpacked_la_SOURCES=compat.c descriptor.c 
+
+lpacked_CFLAGS=$(GIO_CFLAGS) $(LUA_CFLAGS) -flto 
+lpacked_LDADD=$(GIO_LIBS) $(LUA_LIBS)  liblpacked.la 
 lpacked_LDFLAGS=-flto 
-lpacked_SOURCES=compat.c execute.c lpacked.c pack.c  
+lpacked_SOURCES=lpacked.c 

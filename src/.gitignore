@@ -28,4 +28,5 @@
 
 lpacked*
 !lpacked.[ch]
+liblpacked.so*
 test-suite.log
