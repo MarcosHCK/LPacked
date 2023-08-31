@@ -87,6 +87,7 @@ static void explore_table (lua_State* L, LPackedDescriptor* self, const gchar* t
           break;
         }
 
+      g_path_buf_push (&buf, "/");
       g_path_buf_push (&buf, tname);
       g_path_buf_push (&buf, lua_tostring (L, (type == LUA_TNUMBER) ? -1 : -2));
 

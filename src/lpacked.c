@@ -15,7 +15,11 @@
  * along with LPacked. If not, see <http://www.gnu.org/licenses/>.
  */
 #include <config.h>
+#include <builder.h>
 #include <descriptor.h>
+
+#define _g_array_unref0(var) ((var == NULL) ? NULL : (var = (g_array_unref (var), NULL)))
+#define _g_object_unref0(var) ((var == NULL) ? NULL : (var = (g_object_unref (var), NULL)))
 
 struct _LPackedApplication
 {
@@ -46,23 +50,86 @@ int main (int argc, char* argv[])
 return (g_object_unref (app), result);
 }
 
+static void open_vectors (LPackedDescriptor* desc, GHashTable* table, GError** error)
+{
+  GError* tmperr = NULL;
+  GList* list = NULL;
+
+  list = lpacked_descriptor_get_aliases (desc);
+  list = g_list_sort (list, (GCompareFunc) g_strcmp0);
+
+  for (; list; list = list->next)
+    {
+      const gchar* alias = list->data;
+      const gchar* file = lpacked_descriptor_get_file_by_alias (desc, alias);
+
+      if ((lpacked_builder_add_source_from_file (table, alias, file, &tmperr)), G_UNLIKELY (tmperr != NULL))
+        {
+          g_propagate_error (error, tmperr);
+          break;
+        }
+    }
+}
+
+static void do_active (LPackedApplication* self, GError** error)
+{
+  GFile* file = NULL;
+  GError* tmperr = NULL;
+  GOutputStream* stream = NULL;
+  LPackedDescriptor* desc = NULL;
+
+  file = g_file_new_for_commandline_arg (self->pack);
+
+  if ((desc = lpacked_descriptor_new_from_gfile (file, &tmperr), g_object_unref (file)), G_UNLIKELY (tmperr != NULL))
+    g_propagate_error (error, tmperr);
+  else
+    {
+      GHashTable* table = lpacked_builder_new ();
+
+      if ((open_vectors (desc, table, &tmperr)), G_UNLIKELY (tmperr != NULL))
+        g_propagate_error (error, tmperr);
+      else
+        {
+          gboolean byteswap = G_BYTE_ORDER != G_LITTLE_ENDIAN;
+          gchar* output = NULL;
+
+          if (self->pack_output != NULL)
+            output = g_strdup (self->pack_output);
+          else
+            {
+              GPathBuf buf = G_PATH_BUF_INIT;
+              gchar* path = NULL;
+
+              g_path_buf_push (&buf, lpacked_descriptor_get_name (desc));
+              g_path_buf_set_extension (&buf, "lpack");
+              output = g_path_buf_clear_to_path (&buf);
+            }
+
+          if ((lpacked_builder_write (table, output, &tmperr), g_free (output)), G_UNLIKELY (tmperr != NULL))
+            g_propagate_error (error, tmperr);
+        }
+
+      g_hash_table_remove_all (table);
+      g_hash_table_unref (table);
+      g_object_unref (desc);
+    }
+}
+
 static void lpacked_application_class_activate (GApplication* pself)
 {
+  GError* tmperr = NULL;
   LPackedApplication* self = (gpointer) pself;
 
   if (self->pack != NULL)
     {
-      GFile* file = NULL;
-      GError* tmperr = NULL;
-      LPackedDescriptor* desc = NULL;
-
-      file = g_file_new_for_commandline_arg (self->pack);
-      desc = lpacked_descriptor_new_from_gfile (file, &tmperr);
-        g_object_unref (file);
-
-      if (G_UNLIKELY (tmperr != NULL))
+      if ((do_active (self, &tmperr)), G_UNLIKELY (tmperr != NULL))
         {
-          g_assert_no_error (tmperr);
+          const guint code = tmperr->code;
+          const gchar* domain = g_quark_to_string (tmperr->domain);
+          const gchar* message = tmperr->message;
+
+          g_printerr ("(" G_STRLOC "): %s: %i: %s\n", domain, code, message);
+          g_error_free (tmperr);
         }
     }
 }
