@@ -37,8 +37,9 @@ struct _LPackedDescriptor
   /*<private>*/
   GBytes* base_bytes;
   GFile* base_file;
-  gchar* name;
+  gchar* entry;
   GHashTable* files;
+  gchar* name;
 };
 
 struct _LPackedDescriptorClass
@@ -51,6 +52,8 @@ enum
   prop_0,
   prop_base_bytes,
   prop_base_file,
+  prop_entry,
+  prop_name,
   prop_number,
 };
 
@@ -201,8 +204,10 @@ static gboolean lpacked_descriptor_g_initable_iface_init (GInitable* pself, GCan
         {
           switch (result)
             {
-              case LUA_ERRMEM: g_set_error_literal (error, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_FAILED, "out of memory"); break;
-              case LUA_ERRSYNTAX: g_set_error_literal (error, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_LOAD, lua_tostring (L, -1)); break;
+              case LUA_ERRMEM: g_set_error_literal (&tmperr, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_FAILED, "out of memory");
+                                g_propagate_error (error, tmperr); break;
+              case LUA_ERRSYNTAX: g_set_error_literal (&tmperr, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_LOAD, lua_tostring (L, -1));
+                                g_propagate_error (error, tmperr); break;
             }
         }
       else
@@ -211,18 +216,23 @@ static gboolean lpacked_descriptor_g_initable_iface_init (GInitable* pself, GCan
             {
               switch (result)
                 {
-                  case LUA_ERRMEM: g_set_error_literal (error, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_FAILED, "out of memory"); break;
-                  case LUA_ERRRUN: g_set_error_literal (error, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_LOAD, lua_tostring (L, -1)); break;
+                  case LUA_ERRMEM: g_set_error_literal (&tmperr, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_FAILED, "out of memory");
+                                    g_propagate_error (error, tmperr); break;
+                  case LUA_ERRRUN: g_set_error_literal (&tmperr, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_LOAD, lua_tostring (L, -1));
+                                    g_propagate_error (error, tmperr); break;
                 }
             }
           else
             {
               if ((lua_getfield (L, -1, "name"), type = lua_type (L, -1)), G_UNLIKELY (type != LUA_TSTRING))
-                g_set_error (error, LPACKED_DESCRIPTOR_ERROR,
+                {
+                  g_set_error (&tmperr, LPACKED_DESCRIPTOR_ERROR,
                                       (type == LUA_TNIL) ? LPACKED_DESCRIPTOR_ERROR_MISSING_FIELD
                                                          : LPACKED_DESCRIPTOR_ERROR_INVALID_FIELD,
                               "descriptor field 'name' %s", (type == LUA_TNIL) ? "is missing"
                                                                                : "must contain an string value");
+                  g_propagate_error (error, tmperr);
+                }
               else
                 {
                   self->name = g_strdup (lua_tostring (L, -1));
@@ -230,11 +240,14 @@ static gboolean lpacked_descriptor_g_initable_iface_init (GInitable* pself, GCan
                   lua_pop (L, 1);
 
                   if ((lua_getfield (L, -1, "pack"), type = lua_type (L, -1)), G_UNLIKELY (type != LUA_TTABLE))
-                    g_set_error (error, LPACKED_DESCRIPTOR_ERROR,
+                    {
+                      g_set_error (&tmperr, LPACKED_DESCRIPTOR_ERROR,
                                           (type == LUA_TNIL) ? LPACKED_DESCRIPTOR_ERROR_MISSING_FIELD
                                                              : LPACKED_DESCRIPTOR_ERROR_INVALID_FIELD,
                                   "descriptor field 'pack' %s", (type == LUA_TNIL) ? "is missing"
                                                                                    : "must contain a table value");
+                      g_propagate_error (error, tmperr);
+                    }
                   else
                     {
                       if ((explore_descriptor (L, self, &tmperr)), G_UNLIKELY (tmperr != NULL))
@@ -248,8 +261,9 @@ static gboolean lpacked_descriptor_g_initable_iface_init (GInitable* pself, GCan
         }
 
       lua_close (L);
+      g_bytes_unref (bytes);
     }
-return TRUE;
+return tmperr == NULL;
 }
 
 static void lpacked_descriptor_g_initable_iface (GInitableIface* iface)
@@ -276,6 +290,16 @@ static void lpacked_descriptor_class_finalize (GObject* pself)
 G_OBJECT_CLASS (lpacked_descriptor_parent_class)->finalize (pself);
 }
 
+static void lpacked_descriptor_class_get_property (GObject* pself, guint property_id, GValue* value, GParamSpec* pspec)
+{
+  switch (property_id)
+    {
+      default: G_OBJECT_WARN_INVALID_PROPERTY_ID (pself, property_id, pspec); break;
+      case prop_entry: g_value_set_string (value, lpacked_descriptor_get_entry ((LPackedDescriptor*) pself)); break;
+      case prop_name: g_value_set_string (value, lpacked_descriptor_get_name ((LPackedDescriptor*) pself)); break;
+    }
+}
+
 static void lpacked_descriptor_class_set_property (GObject* pself, guint property_id, const GValue* value, GParamSpec* pspec)
 {
   switch (property_id)
@@ -296,14 +320,18 @@ static void lpacked_descriptor_class_set_property (GObject* pself, guint propert
 
 static void lpacked_descriptor_class_init (LPackedDescriptorClass* klass)
 {
-  const GParamFlags flags1 = G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS;
+  const GParamFlags flags1 = G_PARAM_STATIC_STRINGS | G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY;
+  const GParamFlags flags2 = G_PARAM_STATIC_STRINGS | G_PARAM_READABLE;
 
   G_OBJECT_CLASS (klass)->dispose = lpacked_descriptor_class_dispose;
   G_OBJECT_CLASS (klass)->finalize = lpacked_descriptor_class_finalize;
+  G_OBJECT_CLASS (klass)->get_property = lpacked_descriptor_class_get_property;
   G_OBJECT_CLASS (klass)->set_property = lpacked_descriptor_class_set_property;
 
   properties [prop_base_bytes] = g_param_spec_boxed ("base-bytes", "base-bytes", "base-bytes", G_TYPE_BYTES, flags1);
   properties [prop_base_file] = g_param_spec_object ("base-file", "base-file", "base-file", G_TYPE_FILE, flags1);
+  properties [prop_entry] = g_param_spec_string ("entry", "entry", "entry", NULL, flags2);
+  properties [prop_name] = g_param_spec_string ("name", "name", "name", NULL, flags2);
   g_object_class_install_properties (G_OBJECT_CLASS (klass), prop_number, properties);
 }
 
@@ -321,6 +349,12 @@ GList* lpacked_descriptor_get_aliases (LPackedDescriptor* descriptor)
 {
   g_return_val_if_fail (LPACKED_IS_DESCRIPTOR (descriptor), NULL);
 return g_hash_table_get_keys (descriptor->files);
+}
+
+const gchar* lpacked_descriptor_get_entry (LPackedDescriptor* descriptor)
+{
+  g_return_val_if_fail (LPACKED_IS_DESCRIPTOR (descriptor), NULL);
+return descriptor->entry;
 }
 
 GList* lpacked_descriptor_get_files (LPackedDescriptor* descriptor)

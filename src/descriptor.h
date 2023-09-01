@@ -40,6 +40,7 @@ extern "C" {
   GQuark lpacked_descriptor_error_quark (void) G_GNUC_CONST;
   GType lpacked_descriptor_get_type (void) G_GNUC_CONST;
   GList* lpacked_descriptor_get_aliases (LPackedDescriptor* descriptor);
+  const gchar* lpacked_descriptor_get_entry (LPackedDescriptor* descriptor);
   GList* lpacked_descriptor_get_files (LPackedDescriptor* descriptor);
   const gchar* lpacked_descriptor_get_file_by_alias (LPackedDescriptor* descriptor, const gchar* alias);
   const gchar* lpacked_descriptor_get_name (LPackedDescriptor* descriptor);
