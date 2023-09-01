@@ -18,12 +18,12 @@
 bin_PROGRAMS=lpacked 
 pkglib_LTLIBRARIES=liblpacked.la 
 noinst_DATA=gvdb/gvdb.doap 
-noinst_HEADERS=builder.h descriptor.h gvdb/gvdb-builder.h gvdb/gvdb-format.h gvdb/gvdb-reader.h 
+noinst_HEADERS=blob.h builder.h descriptor.h gvdb/gvdb-builder.h gvdb/gvdb-format.h gvdb/gvdb-reader.h 
 
 liblpacked_la_CFLAGS=$(GIO_CFLAGS) $(LUA_CFLAGS) -flto 
 liblpacked_la_LDFLAGS=-flto 
 liblpacked_la_LIBADD=$(GIO_LIBS) $(LUA_LIBS) 
-liblpacked_la_SOURCES=builder.c descriptor.c gvdb/gvdb-builder.c gvdb/gvdb-reader.c 
+liblpacked_la_SOURCES=blob.c builder.c descriptor.c gvdb/gvdb-builder.c gvdb/gvdb-reader.c 
 
 lpacked_CFLAGS=$(GIO_CFLAGS) $(LUA_CFLAGS) -flto 
 lpacked_LDADD=$(GIO_LIBS) $(LUA_LIBS)  liblpacked.la 

@@ -15,6 +15,7 @@
  * along with LPacked. If not, see <http://www.gnu.org/licenses/>.
  */
 #include <config.h>
+#include <blob.h>
 #include <builder.h>
 #include <descriptor.h>
 
@@ -73,45 +74,62 @@ static void open_vectors (LPackedDescriptor* desc, GHashTable* table, GError** e
 
 static void do_active (LPackedApplication* self, GError** error)
 {
-  GFile* file = NULL;
   GError* tmperr = NULL;
-  GOutputStream* stream = NULL;
-  LPackedDescriptor* desc = NULL;
+  GFile* file = NULL;
 
-  file = g_file_new_for_commandline_arg (self->pack);
-
-  if ((desc = lpacked_descriptor_new_from_gfile (file, &tmperr), g_object_unref (file)), G_UNLIKELY (tmperr != NULL))
-    g_propagate_error (error, tmperr);
-  else
+  if (self->execute != NULL)
     {
-      GHashTable* table = lpacked_builder_new ();
+      GResource* blob = NULL;
 
-      if ((open_vectors (desc, table, &tmperr)), G_UNLIKELY (tmperr != NULL))
+      file = g_file_new_for_commandline_arg (self->execute);
+
+      if ((blob = lpacked_blob_load_from_gfile (file, &tmperr), g_object_unref (file)), G_UNLIKELY (tmperr != NULL))
         g_propagate_error (error, tmperr);
       else
         {
-          gboolean byteswap = G_BYTE_ORDER != G_LITTLE_ENDIAN;
-          gchar* output = NULL;
+          g_resource_unref (blob);
+        }
+    }
 
-          if (self->pack_output != NULL)
-            output = g_strdup (self->pack_output);
+  if (self->pack != NULL)
+    {
+      LPackedDescriptor* desc = NULL;
+
+      file = g_file_new_for_commandline_arg (self->pack);
+
+      if ((desc = lpacked_descriptor_new_from_gfile (file, &tmperr), g_object_unref (file)), G_UNLIKELY (tmperr != NULL))
+        g_propagate_error (error, tmperr);
+      else
+        {
+          GHashTable* table = lpacked_builder_new ();
+
+          if ((open_vectors (desc, table, &tmperr)), G_UNLIKELY (tmperr != NULL))
+            g_propagate_error (error, tmperr);
           else
             {
-              GPathBuf buf = G_PATH_BUF_INIT;
-              gchar* path = NULL;
+              gboolean byteswap = G_BYTE_ORDER != G_LITTLE_ENDIAN;
+              gchar* output = NULL;
 
-              g_path_buf_push (&buf, lpacked_descriptor_get_name (desc));
-              g_path_buf_set_extension (&buf, "lpack");
-              output = g_path_buf_clear_to_path (&buf);
+              if (self->pack_output != NULL)
+                output = g_strdup (self->pack_output);
+              else
+                {
+                  GPathBuf buf = G_PATH_BUF_INIT;
+                  gchar* path = NULL;
+
+                  g_path_buf_push (&buf, lpacked_descriptor_get_name (desc));
+                  g_path_buf_set_extension (&buf, "lpack");
+                  output = g_path_buf_clear_to_path (&buf);
+                }
+
+              if ((lpacked_builder_write (table, output, &tmperr), g_free (output)), G_UNLIKELY (tmperr != NULL))
+                g_propagate_error (error, tmperr);
             }
 
-          if ((lpacked_builder_write (table, output, &tmperr), g_free (output)), G_UNLIKELY (tmperr != NULL))
-            g_propagate_error (error, tmperr);
+          g_hash_table_remove_all (table);
+          g_hash_table_unref (table);
+          g_object_unref (desc);
         }
-
-      g_hash_table_remove_all (table);
-      g_hash_table_unref (table);
-      g_object_unref (desc);
     }
 }
 
@@ -120,17 +138,14 @@ static void lpacked_application_class_activate (GApplication* pself)
   GError* tmperr = NULL;
   LPackedApplication* self = (gpointer) pself;
 
-  if (self->pack != NULL)
+  if ((do_active (self, &tmperr)), G_UNLIKELY (tmperr != NULL))
     {
-      if ((do_active (self, &tmperr)), G_UNLIKELY (tmperr != NULL))
-        {
-          const guint code = tmperr->code;
-          const gchar* domain = g_quark_to_string (tmperr->domain);
-          const gchar* message = tmperr->message;
+      const guint code = tmperr->code;
+      const gchar* domain = g_quark_to_string (tmperr->domain);
+      const gchar* message = tmperr->message;
 
-          g_printerr ("(" G_STRLOC "): %s: %i: %s\n", domain, code, message);
-          g_error_free (tmperr);
-        }
+      g_printerr ("(" G_STRLOC "): %s: %i: %s\n", domain, code, message);
+      g_error_free (tmperr);
     }
 }
 
