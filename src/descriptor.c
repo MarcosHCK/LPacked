@@ -102,57 +102,39 @@ static void explore_table (lua_State* L, LPackedDescriptor* self, const gchar* t
 static void explore_descriptor (lua_State* L, LPackedDescriptor* self, GError** error)
 {
   GError* tmperr = NULL;
-  const char* tables [] = { "sources", "resources", NULL, };
-  int i, j, nils = 0;
+  const gchar* tname = NULL;
+  int type;
 
-  for (i = 0; i < G_N_ELEMENTS (tables); ++i)
+  lua_pushnil (L);
+
+  while (lua_next (L, -2))
     {
-      if (tables [i] == NULL)
+      if ((type = lua_type (L, -1)), G_UNLIKELY (type != LUA_TTABLE))
         {
-          if (G_UNLIKELY (nils == i))
-            {
-              luaL_Buffer B;
-              luaL_buffinit (L, &B);
-              luaL_addstring (&B, "at least one of ");
-
-              for (j = 0; tables[j]; ++j)
-                {
-                  if (j > 0)
-                  luaL_addstring (&B, ((j + 1) == G_N_ELEMENTS (tables)) ? " o " : ", ");
-                  luaL_addstring (&B, tables [j]);
-                }
-
-              luaL_addstring (&B, " must exist");
-              luaL_pushresult (&B);
-
-              g_set_error_literal (error, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_MISSING_FIELD, lua_tostring (L, -1));
-              lua_pop (L, 1);
-              break;
-            }
+          lua_pop (L, 2);
+          g_set_error_literal (error, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_INVALID_FIELD,
+                                  "descriptor field 'table' table must contain string-table pairs");
+          break;
         }
-      else
+
+      if ((type = lua_type (L, -2)), G_UNLIKELY (type != LUA_TSTRING))
         {
-          lua_getfield (L, -1, tables [i]);
-
-          switch (lua_type (L, -1))
-            {
-              default:
-                i = G_N_ELEMENTS (tables) + 1;
-                g_set_error (error, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_INVALID_FIELD, "descriptor field '%s' must contain a table", tables [i]);
-                break;
-
-              case LUA_TNIL: ++nils; break;
-
-              case LUA_TTABLE:
-                if ((explore_table (L, self, tables [i], &tmperr)), G_UNLIKELY (tmperr != NULL))
-                  {
-                    i = G_N_ELEMENTS (tables) + 1;
-                    g_propagate_error (error, tmperr);
-                  }
-                break;
-            }
-          lua_pop (L, 1);
+          lua_pop (L, 2);
+          g_set_error_literal (error, LPACKED_DESCRIPTOR_ERROR, LPACKED_DESCRIPTOR_ERROR_INVALID_FIELD,
+                                  "descriptor field 'table' table must contain string-table pairs");
+          break;
         }
+
+      tname = lua_tostring (L, -2);
+
+      if ((explore_table (L, self, tname, &tmperr)), G_UNLIKELY (tmperr != NULL))
+        {
+          lua_pop (L, 2);
+          g_propagate_error (error, tmperr);
+          break;
+        }
+
+      lua_pop (L, 1);
     }
 }
 
@@ -247,9 +229,21 @@ static gboolean lpacked_descriptor_g_initable_iface_init (GInitable* pself, GCan
 
                   lua_pop (L, 1);
 
-                  if ((explore_descriptor (L, self, &tmperr)), G_UNLIKELY (tmperr != NULL))
-                    g_propagate_error (error, tmperr);
+                  if ((lua_getfield (L, -1, "pack"), type = lua_type (L, -1)), G_UNLIKELY (type != LUA_TTABLE))
+                    g_set_error (error, LPACKED_DESCRIPTOR_ERROR,
+                                          (type == LUA_TNIL) ? LPACKED_DESCRIPTOR_ERROR_MISSING_FIELD
+                                                             : LPACKED_DESCRIPTOR_ERROR_INVALID_FIELD,
+                                  "descriptor field 'pack' %s", (type == LUA_TNIL) ? "is missing"
+                                                                                   : "must contain a table value");
+                  else
+                    {
+                      if ((explore_descriptor (L, self, &tmperr)), G_UNLIKELY (tmperr != NULL))
+                        g_propagate_error (error, tmperr);
+                      else lua_pop (L, 1);
+                    }
                 }
+
+              lua_pop (L, 1);
             }
         }
 
