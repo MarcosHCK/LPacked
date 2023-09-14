@@ -128,40 +128,7 @@ PKG_PROG_PKG_CONFIG
 # Note: keep sorted alphabetically 
 #
 
-PKG_CHECK_MODULES([ARCHIVE], [libarchive])
-PKG_CHECK_MODULES([GLIB], [glib-2.0])
-
-PKG_CHECK_EXISTS([luajit], [
-AC_DEFINE_UNQUOTED([D_LUAJIT], [1], [Whether lua library is LuaJIT])
-AC_SUBST([LUA_VERSION], [5.1])
-PKG_CHECK_MODULES([LUA], [luajit]) ], [
-AC_DEFINE_UNQUOTED([D_LUAJIT], [0], [Whether lua library is LuaJIT])
-PKG_CHECK_EXISTS([lua-5.4], [ PKG_CHECK_MODULES([LUA], [lua-5.4])
-AC_SUBST([LUA_VERSION], [5.4]) ], [
-PKG_CHECK_EXISTS([lua5.4], [ PKG_CHECK_MODULES([LUA], [lua5.4])
-AC_SUBST([LUA_VERSION], [5.4]) ], [
-PKG_CHECK_EXISTS([lua54], [ PKG_CHECK_MODULES([LUA], [lua54])
-AC_SUBST([LUA_VERSION], [5.4]) ], [
-PKG_CHECK_EXISTS([lua-5.3], [ PKG_CHECK_MODULES([LUA], [lua-5.3])
-AC_SUBST([LUA_VERSION], [5.3]) ], [
-PKG_CHECK_EXISTS([lua5.3], [ PKG_CHECK_MODULES([LUA], [lua5.3])
-AC_SUBST([LUA_VERSION], [5.3]) ], [
-PKG_CHECK_EXISTS([lua53], [ PKG_CHECK_MODULES([LUA], [lua53])
-AC_SUBST([LUA_VERSION], [5.3]) ], [
-PKG_CHECK_EXISTS([lua-5.2], [ PKG_CHECK_MODULES([LUA], [lua-5.2])
-AC_SUBST([LUA_VERSION], [5.2]) ], [
-PKG_CHECK_EXISTS([lua5.2], [ PKG_CHECK_MODULES([LUA], [lua5.2])
-AC_SUBST([LUA_VERSION], [5.2]) ], [
-PKG_CHECK_EXISTS([lua52], [ PKG_CHECK_MODULES([LUA], [lua52])
-AC_SUBST([LUA_VERSION], [5.2]) ], [
-PKG_CHECK_EXISTS([lua-5.1], [ PKG_CHECK_MODULES([LUA], [lua-5.1])
-AC_SUBST([LUA_VERSION], [5.1]) ], [
-PKG_CHECK_EXISTS([lua5.1], [ PKG_CHECK_MODULES([LUA], [lua5.1])
-AC_SUBST([LUA_VERSION], [5.1]) ], [
-PKG_CHECK_EXISTS([lua51], [ PKG_CHECK_MODULES([LUA], [lua51])
-AC_SUBST([LUA_VERSION], [5.1]) ], [
-AC_MSG_FAILURE([No lua library found, please install any version 5.1, 5.2, 5.3 or 5.4])
-])])])])])])])])])])])])])
+PKG_CHECK_MODULES([GIO], [gio-2.0])
 
 #
 # Check for libraries

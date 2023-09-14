@@ -26,6 +26,8 @@
 *.Tpo
 .dirstamp
 
-lpacked*
-!lpacked.[ch]
+lpacked
+lpacked.exe
+liblpacked.so*
+liblpacked.dll*
 test-suite.log

@@ -16,8 +16,15 @@
 #
 
 bin_PROGRAMS=lpacked
+pkglib_LTLIBRARIES=liblpacked.la
+noinst_HEADERS=application.h 
 
-lpacked_CFLAGS=$(ARCHIVE_CFLAGS) $(GLIB_CFLAGS) -flto 
-lpacked_LDADD=$(ARCHIVE_LIBS) $(GLIB_LIBS) 
+liblpacked_la_CFLAGS=$(GIO_CFLAGS) -flto 
+liblpacked_la_LDFLAGS=-flto 
+liblpacked_la_LIBADD=$(GIO_LIBS) 
+liblpacked_la_SOURCES=application.c 
+
+lpacked_CFLAGS=$(GIO_CFLAGS) -flto 
+lpacked_LDADD=$(GIO_LIBS) liblpacked.la 
 lpacked_LDFLAGS=-flto 
 lpacked_SOURCES=lpacked.c 

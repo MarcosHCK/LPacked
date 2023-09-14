@@ -14,13 +14,20 @@
  * You should have received a copy of the GNU General Public License
  * along with LPacked. If not, see <http://www.gnu.org/licenses/>.
  */
-#include <config.h>
-#include <application.h>
+#ifndef __LP_APPLICATION__
+#define __LP_APPLICATION__ 1
+#include <gio/gio.h>
 
-int main (int argc, char* argv[])
-{
-  GApplicationFlags flags = G_APPLICATION_HANDLES_OPEN;
-  gpointer application = g_object_new (LP_TYPE_APPLICATION, "flags", flags, NULL);
-  gint result = g_application_run (G_APPLICATION (application), argc, argv);
-return (g_object_unref (application), result);
+#define LP_TYPE_APPLICATION (lp_application_get_type ())
+
+#if __cplusplus
+extern "C" {
+#endif // __cplusplus
+
+  G_DECLARE_FINAL_TYPE (LpApplication, lp_application, LP, APPLICATION, GApplication);
+
+#if __cplusplus
 }
+#endif // __cplusplus
+
+#endif // __LP_APPLICATION__
