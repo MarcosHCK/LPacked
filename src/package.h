@@ -19,7 +19,6 @@
 #include <gio/gio.h>
 
 typedef struct _LpPackage LpPackage;
-#define LP_RESOURCES_QUEUE "lpacked.resources.queue"
 
 #if __cplusplus
 extern "C" {
