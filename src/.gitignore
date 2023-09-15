@@ -26,6 +26,9 @@
 *.Tpo
 .dirstamp
 
+LPacked.gir
+LPacked.typelib
+
 lpacked
 lpacked.exe
 liblpacked.so*

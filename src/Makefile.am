@@ -21,6 +21,7 @@ bin_PROGRAMS=lpacked
 pkglib_LTLIBRARIES=liblpacked.la
 noinst_DATA=$(resources_FILES) 
 noinst_HEADERS=application.h compat.h package.h 
+SUFFIXES=.gir .typelib 
 
 liblpacked_la_CFLAGS=$(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) -flto 
 liblpacked_la_LDFLAGS=-flto 
@@ -32,6 +33,9 @@ lpacked_LDADD=$(GIO_LIBS) $(LGI_LIBS) $(LUA_LIBS) liblpacked.la
 lpacked_LDFLAGS=-flto 
 lpacked_SOURCES=lpacked.c resources.c 
 
+.gir.typelib:
+	$(G_IR_COMPILER) --output=$@ $<
+
 lpacked.c: resources.h
 
 resources.c: resources.xml $(resources_FILES)
@@ -39,3 +43,18 @@ resources.c: resources.xml $(resources_FILES)
 
 resources.h: resources.xml $(resources_FILES)
 	$(GLIB_COMPILE_RESOURCES) --target=$@ --manual-register --internal --generate-header --c-name=lp_resources $<
+
+-include $(INTROSPECTION_MAKEFILE)
+INTROSPECTION_GIRS=LPacked.gir
+INTROSPECTION_SCANNER_ARGS=--add-include-path=$(srcdir) --libtool="$(LIBTOOL)" --warn-all \
+													 --identifier-prefix=Lp --symbol-prefix=lp 
+INTROSPECTION_COMPILER_ARGS=--includedir=$(srcdir)
+
+LPacked.gir: liblpacked.la
+LPacked_gir_CFLAGS=$(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) 
+LPacked_gir_FILES=application.c application.h 
+LPacked_gir_INCLUDES=Gio-2.0 
+LPacked_gir_LIBS=liblpacked.la  
+LPacked_gir_NAMESPACE=LPacked
+LPacked_gir_VERSION=$(PACKAGE_VERSION_MAJOR).$(PACKAGE_VERSION_MINOR)
+CLEANFILES=LPacked.gir LPacked.typelib 

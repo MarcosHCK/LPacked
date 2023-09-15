@@ -16,35 +16,14 @@
  */
 #include <config.h>
 #include <compat.h>
+#include <girepository.h>
 #include <glib.h>
 #include <package.h>
 #include <resources.h>
 
-static int doinit (lua_State* L)
-{
-  lua_getglobal (L, "require");
-  lua_pushliteral (L, "org.hck.lpacked");
-  lua_call (L, 1, 1);
-return 1;
-}
-
-static int msghandler (lua_State* L)
-{
-  const char* msg = NULL;
-  const char* type = NULL;
-
-  if ((msg = lua_tostring (L, 1)) == NULL)
-    {
-      if (luaL_callmeta (L, 1, "__tostring") && lua_isstring (L, -1))
-        return 1;
-      else
-        {
-          type = luaL_typename (L, 1);
-          msg = lua_pushfstring (L, "(error object is a %s value)", type);
-        }
-    }
-return (luaL_traceback (L, L, msg, 1), 1);
-}
+static int doinit (lua_State* L);
+static int msghandler (lua_State* L);
+static int typelib (lua_State* L);
 
 int main (int argc, char* argv[])
 {
@@ -90,6 +69,7 @@ int main (int argc, char* argv[])
   lua_rawseti (L, -2, objlen + 1);
   lua_pop (L, 1);
 
+  lua_pushcfunction (L, msghandler);
   lua_pushcfunction (L, doinit);
 
   lua_createtable (L, argc, 0);
@@ -109,4 +89,87 @@ int main (int argc, char* argv[])
       default: g_error ("(" G_STRLOC ") lua_pcall()!: unknown error %i", result);
     }
 return (lua_close (L), result);
+}
+
+static int doinit (lua_State* L)
+{
+  lua_pushcfunction (L, typelib);
+  lua_pushliteral (L, "/org/hck/lpacked/LPacked.typelib");
+  lua_call (L, 1, 0);
+  lua_getglobal (L, "require");
+  lua_pushliteral (L, "org.hck.lpacked");
+  lua_call (L, 1, 1);
+  //lua_getfield (L, -1, "main");
+  //lua_pushvalue (L, 1);
+  //lua_call (L, 1, 1);
+return 1;
+}
+
+static int msghandler (lua_State* L)
+{
+  const char* msg = NULL;
+  const char* type = NULL;
+
+  if ((msg = lua_tostring (L, 1)) == NULL)
+    {
+      if (luaL_callmeta (L, 1, "__tostring") && lua_isstring (L, -1))
+        return 1;
+      else
+        {
+          type = luaL_typename (L, 1);
+          msg = lua_pushfstring (L, "(error object is a %s value)", type);
+        }
+    }
+return (luaL_traceback (L, L, msg, 1), 1);
+}
+
+static int typelib (lua_State* L)
+{
+  GBytes* bytes = NULL;
+  GError* tmperr = NULL;
+  GITypelib* itypelib = NULL;
+  GResource* resource = lp_resources_get_resource ();
+  const guint8* data = NULL;
+  const gchar* namespace = NULL;
+  const gchar* path = luaL_checkstring (L, 1);
+  gsize size = 0;
+
+  if ((bytes = g_resource_lookup_data (resource, path, 0, &tmperr)), G_UNLIKELY (tmperr != NULL))
+    {
+      const guint code = tmperr->code;
+      const gchar* domain = g_quark_to_string (tmperr->domain);
+      const gchar* message = tmperr->message;
+
+      lua_pushfstring (L, "%s: %u: %s", domain, code, message);
+      g_error_free (tmperr);
+      lua_error (L);
+    }
+
+  data = g_bytes_get_data (bytes, &size);
+
+  if ((itypelib = g_typelib_new_from_const_memory (data, size, &tmperr)), G_UNLIKELY (tmperr != NULL))
+    {
+      const guint code = tmperr->code;
+      const gchar* domain = g_quark_to_string (tmperr->domain);
+      const gchar* message = tmperr->message;
+
+      lua_pushfstring (L, "%s: %u: %s", domain, code, message);
+      g_bytes_unref (bytes);
+      g_error_free (tmperr);
+      lua_error (L);
+    }
+
+  if ((namespace = g_irepository_load_typelib (NULL, itypelib, 0, &tmperr)), G_UNLIKELY (tmperr != NULL))
+    {
+      const guint code = tmperr->code;
+      const gchar* domain = g_quark_to_string (tmperr->domain);
+      const gchar* message = tmperr->message;
+
+      lua_pushfstring (L, "%s: %u: %s", domain, code, message);
+      g_bytes_unref (bytes);
+      g_error_free (tmperr);
+      g_typelib_free (itypelib);
+      lua_error (L);
+    }
+return (lua_pushstring (L, namespace), 1);
 }

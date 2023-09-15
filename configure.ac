@@ -123,6 +123,8 @@ AC_PROG_RANLIB
 
 PKG_PROG_PKG_CONFIG
 
+AC_CHECK_PROG([G_IR_COMPILER], [g-ir-compiler], [g-ir-compiler], [no])
+AS_IF([test "x$G_IR_COMPILER" = "xno"], [AC_MSG_FAILURE([g-ir-compiler not found our your system])])
 AC_CHECK_PROG([GLIB_COMPILE_RESOURCES], [glib-compile-resources], [glib-compile-resources], [no])
 AS_IF([test "x$GLIB_COMPILE_RESOURCES" = "xno"], [AC_MSG_FAILURE([glib-compile-resources not found our your system])])
 
@@ -148,6 +150,11 @@ AC_MSG_RESULT([no])
 done
 
 AS_IF([test x$LUA_VERSION = "xno"], [AC_MSG_FAILURE([No lua library found])])
+
+GOBJECT_INTROSPECTION_REQUIRE([1.0])
+AC_SUBST([GIR_CFLAGS], [$INTROSPECTION_CFLAGS])
+AC_SUBST([GIR_LIBS], [$INTROSPECTION_LIBS])
+
 PKG_CHECK_MODULES([GIO], [gio-2.0])
 
 #
