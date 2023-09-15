@@ -30,4 +30,6 @@ lpacked
 lpacked.exe
 liblpacked.so*
 liblpacked.dll*
+resources.c
+resources.h
 test-suite.log

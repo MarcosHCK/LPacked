@@ -123,11 +123,31 @@ AC_PROG_RANLIB
 
 PKG_PROG_PKG_CONFIG
 
+AC_CHECK_PROG([GLIB_COMPILE_RESOURCES], [glib-compile-resources], [glib-compile-resources], [no])
+AS_IF([test "x$GLIB_COMPILE_RESOURCES" = "xno"], [AC_MSG_FAILURE([glib-compile-resources not found our your system])])
+
 #
 # Check for libraries using pkg-config
 # Note: keep sorted alphabetically 
 #
 
+for version in jit 5.4 5.3 5.2 5.1;
+do
+LUA_VERSION=no
+AC_MSG_CHECKING([for lua$version, lua$version-lgi])
+PKG_CHECK_EXISTS([lua$version], [
+PKG_CHECK_EXISTS([lua$version-lgi], [
+AC_MSG_RESULT([yes])
+PKG_CHECK_MODULES([LUA], [lua$version])
+PKG_CHECK_MODULES([LGI], [lua$version-lgi])
+LUA_VERSION=$version
+AC_SUBST([LUA_VERSION])
+break
+])])
+AC_MSG_RESULT([no])
+done
+
+AS_IF([test x$LUA_VERSION = "xno"], [AC_MSG_FAILURE([No lua library found])])
 PKG_CHECK_MODULES([GIO], [gio-2.0])
 
 #
