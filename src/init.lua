@@ -15,9 +15,32 @@
 -- You should have received a copy of the GNU General Public License
 -- along with LPacked.  If not, see <http://www.gnu.org/licenses/>.
 ]]
+local lgi = require ('lgi')
+local log = lgi.log.domain ('LPacked')
+local lp = lgi.package ('lpacked')
+local Lp = lgi.require ('LPacked')
 local lpacked = {}
 
 do
-  print ('Hello World!')
+  function lpacked.main (args)
+    local app = Lp.Application.new ()
+
+    function app:on_activate ()
+      if (self.exec) then
+        app:open ({}, 'exec')
+      else
+        error ('unimplemented')
+      end
+    end
+
+    function app:on_open (files)
+      if (self.pack) then
+        log.critical ('--pack option does not takes any additional files')
+      else
+        error ('unimplemented')
+      end
+    end
+  return app:run (args)
+  end
 return lpacked
 end

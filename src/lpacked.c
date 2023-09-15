@@ -18,6 +18,7 @@
 #include <compat.h>
 #include <girepository.h>
 #include <glib.h>
+#include <lua-lgi.h>
 #include <package.h>
 #include <resources.h>
 
@@ -47,6 +48,11 @@ int main (int argc, char* argv[])
   lua_pushliteral (L, ";/?.lua;/?/init.lua");
   lua_concat (L, 2);
   lua_setfield (L, -2, "path");
+
+  lua_getfield (L, -1, "preload");
+  lua_pushcfunction (L, luaopen_lgi_corelgilua51);
+  lua_setfield (L, -2, "lgi.corelgilua51");
+  lua_pop (L, 1);
 
 #if LUA_VERSION_NUM >= 502
   lua_getfield (L, -1, "searchers");
@@ -99,9 +105,9 @@ static int doinit (lua_State* L)
   lua_getglobal (L, "require");
   lua_pushliteral (L, "org.hck.lpacked");
   lua_call (L, 1, 1);
-  //lua_getfield (L, -1, "main");
-  //lua_pushvalue (L, 1);
-  //lua_call (L, 1, 1);
+  lua_getfield (L, -1, "main");
+  lua_pushvalue (L, 1);
+  lua_call (L, 1, 1);
 return 1;
 }
 

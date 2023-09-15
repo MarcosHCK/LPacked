@@ -26,6 +26,8 @@ extern "C" {
 
   G_DECLARE_FINAL_TYPE (LpApplication, lp_application, LP, APPLICATION, GApplication);
 
+  LpApplication* lp_application_new ();
+
 #if __cplusplus
 }
 #endif // __cplusplus
