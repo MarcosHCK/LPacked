@@ -23,13 +23,13 @@ noinst_DATA=$(resources_FILES)
 noinst_HEADERS=application.h builder.h compat.h package.h 
 SUFFIXES=.gir .typelib 
 
-liblpacked_la_CFLAGS=$(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) -flto 
+liblpacked_la_CFLAGS=$(ARCHIVE_CFLAGS) $(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) -flto 
 liblpacked_la_LDFLAGS=-flto 
-liblpacked_la_LIBADD=$(GIO_LIBS) $(LGI_LIBS) $(LUA_LIBS) 
+liblpacked_la_LIBADD=$(ARCHIVE_LIBS) $(GIO_LIBS) $(LGI_LIBS) $(LUA_LIBS) 
 liblpacked_la_SOURCES=application.c builder.c compat.c package.c 
 
-lpacked_CFLAGS=$(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) -flto 
-lpacked_LDADD=$(GIO_LIBS) $(LGI_LIBS) $(LUA_LIBS) liblpacked.la 
+lpacked_CFLAGS=$(ARCHIVE_CFLAGS) $(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) -flto 
+lpacked_LDADD=$(ARCHIVE_LIBS) $(GIO_LIBS) $(LGI_LIBS) $(LUA_LIBS) liblpacked.la 
 lpacked_LDFLAGS=-flto 
 lpacked_SOURCES=lpacked.c resources.c 
 
@@ -51,7 +51,7 @@ INTROSPECTION_SCANNER_ARGS=--add-include-path=$(srcdir) --libtool="$(LIBTOOL)" -
 INTROSPECTION_COMPILER_ARGS=--includedir=$(srcdir)
 
 LPacked.gir: liblpacked.la
-LPacked_gir_CFLAGS=$(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) 
+LPacked_gir_CFLAGS=$(ARCHIVE_CFLAGS) $(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) 
 LPacked_gir_FILES=application.c application.h builder.c builder.h package.c package.h 
 LPacked_gir_INCLUDES=Gio-2.0 
 LPacked_gir_LIBS=liblpacked.la  

@@ -90,11 +90,21 @@ do
 
           local name = Lp.canonicalize_alias (path, alias)
           local file = Gio.File.new_for_commandline_arg (filename)
+          local info = assert (file:query_info ('standard::size', 0))
           local stream = assert (file:read ())
 
-          builder:add_from_stream (name, stream)
+          builder:add_from_stream (name, stream, info:get_size ())
         end
       end
+    end
+
+    do
+      local filename = output or Lp.canonicalize_pack_name (desc.name)
+      local file = Gio.File.new_for_commandline_arg (filename)
+      local stream = assert (file:replace (nil, false, 'PRIVATE'))
+
+      assert (builder:write_to_stream (stream))
+      assert (stream:close ())
     end
   end
 return pack

@@ -19,6 +19,15 @@
 #include <gio/gio.h>
 
 #define LP_TYPE_PACK_BUILDER (lp_pack_builder_get_type ())
+#define LP_PACK_BUILDER_ERROR (lp_pack_builder_error_quark ())
+
+typedef enum
+{
+  LP_PACK_BUILDER_ERROR_FAILED,
+  LP_PACK_BUILDER_ERROR_OPEN,
+  LP_PACK_BUILDER_ERROR_WRITE,
+  LP_PACK_BUILDER_ERROR_CLOSE,
+} LpPackBuilderError;
 
 #if __cplusplus
 extern "C" {
@@ -26,12 +35,16 @@ extern "C" {
 
   G_DECLARE_FINAL_TYPE (LpPackBuilder, lp_pack_builder, LP, PACK_BUILDER, GObject);
 
+  GQuark lp_pack_builder_error_quark (void) G_GNUC_CONST;
+
   gchar* lp_canonicalize_alias (const gchar* path, const gchar* alias);
+  gchar* lp_canonicalize_pack_name (const gchar* pack_name);
   void lp_pack_builder_add_from_bytes (LpPackBuilder* builder, const gchar* path, GBytes* bytes);
   gboolean lp_pack_builder_add_from_file (LpPackBuilder* builder, const gchar* path, GFile* file, GError** error);
   gboolean lp_pack_builder_add_from_filename (LpPackBuilder* builder, const gchar* path, const gchar* filename, GError** error);
-  void lp_pack_builder_add_from_stream (LpPackBuilder* builder, const gchar* path, GInputStream* stream);
+  void lp_pack_builder_add_from_stream (LpPackBuilder* builder, const gchar* path, GInputStream* stream, gsize size);
   LpPackBuilder* lp_pack_builder_new ();
+  gboolean lp_pack_builder_write_to_stream (LpPackBuilder* builder, GOutputStream* stream, GError** error);
 
 #if __cplusplus
 }
