@@ -31,7 +31,7 @@ do
       if (self.exec) then
         app:open ({}, 'exec')
       elseif (self.pack) then
-        local value
+        local desc
 
         do
           local chunk
@@ -55,7 +55,8 @@ do
               end, '=descriptor', 't', env))
           end
 
-          value = not setfenv and chunk () or setfenv (chunk, env) ()
+          ---@diagnostic disable-next-line: deprecated
+          desc = not setfenv and chunk () or setfenv (chunk, env) ()
         end
 
         do
@@ -63,7 +64,7 @@ do
           local optional = { description = 'string', main = 'string', }
           local mandatory = { name = 'string', pack = 'table', }
 
-          for field, type_ in ipairs (optional) do
+          for field, type_ in pairs (optional) do
             local got = type (desc [field])
             if (got ~= 'nil' and got ~= type_) then
               local prep = type_ == 'string' and 'an' or 'a'
@@ -71,7 +72,7 @@ do
             end
           end
 
-          for field, type_ in ipairs (mandatory) do
+          for field, type_ in pairs (mandatory) do
             local got = type (desc [field])
             if (got == 'nil') then
               error (([[mandatory descriptor field '%s' is missing]]):format (field))
