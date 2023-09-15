@@ -21,6 +21,7 @@
 <gresources>
   <gresource prefix="/org/hck/lpacked/">
     <file compressed="false">init.lua</file>
+    <file compressed="false">main.lua</file>
     <file compressed="true">LPacked.typelib</file>
   </gresource>
 </gresources>

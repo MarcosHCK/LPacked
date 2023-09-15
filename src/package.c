@@ -21,81 +21,80 @@
 #include <compat.h>
 #include <package.h>
 
-static int __gc (lua_State* L)
+struct _LpPackage
 {
-  g_queue_clear_full
-    ((GQueue*) luaL_checkudata (L, 1, LP_RESOURCES_QUEUE),
-     (GDestroyNotify) g_resource_unref);
-return 0;
+  guint ref_count;
+  GQueue queue;
+};
+
+/**
+ * LpPackage:
+ * 
+ * A GResource-backed package.
+*/
+
+G_DEFINE_BOXED_TYPE (LpPackage, lp_package, lp_package_ref, lp_package_unref);
+
+/**
+ * lp_package_delete:
+ * @package: #LpPackage instance.
+ * @resource: #GResource instance.
+ *
+ * Removes @resource from @package internal list. As a result
+ * further look ups will not be propagated to @resource.
+ */
+void lp_package_delete (LpPackage* package, GResource* resource)
+{
+  g_return_if_fail (package != NULL);
+  g_return_if_fail (resource != NULL);
+  GList* link = g_queue_find (&package->queue, resource);
+
+  g_queue_delete_link (&package->queue, link);
+  g_list_free_full (link, (GDestroyNotify) g_resource_unref);
 }
 
-void lp_package_create_resources (lua_State* L)
+/**
+ * lp_package_insert:
+ * @package: #LpPackage instance.
+ * @resource: #GResource instance.
+ *
+ * Inserts @resource into @package internal list. As a result
+ * further look ups into @package will be delegated to @resources.
+ */
+void lp_package_insert (LpPackage* package, GResource* resource)
 {
-  g_queue_init (lua_newuserdata (L, sizeof (GQueue)));
+  g_return_if_fail (package != NULL);
+  g_return_if_fail (resource != NULL);
 
-  if (!luaL_newmetatable (L, LP_RESOURCES_QUEUE))
-    lua_setmetatable (L, -2);
-  else
-    {
-      lua_pushcfunction (L, __gc);
-      lua_setfield (L, -2, "__gc");
-      lua_setmetatable (L, -2);
-    }
+  g_queue_push_tail (&package->queue, g_resource_ref (resource));
 }
 
-void lp_package_delete_resource (lua_State* L, int idx, GResource* resource)
+/**
+ * lp_package_lookup:
+ * @package: #LpPackage instance.
+ * @path: path name pointing to desired data.
+ * @error: return location for a #GError, or %NULL.
+ *
+ * Looks up for data under @path path. Returns a #GBytes instance
+ * containing such data.
+ *
+ * Returns: (transfer full): (nullable): found file data, or NULL.
+ */
+GBytes* lp_package_lookup (LpPackage* package, const gchar* path, GError** error)
 {
-  GQueue* queue = luaL_checkudata (L, idx, LP_RESOURCES_QUEUE);
-  GList* link = g_queue_find (queue, resource);
-
-  if (link != NULL)
-    {
-      g_queue_delete_link (queue, link);
-      g_list_free_full (link, (GDestroyNotify) g_resource_unref);
-    }
-}
-
-void lp_package_insert_resource (lua_State* L, int idx, GResource* resource)
-{
-  g_queue_push_tail
-    ((GQueue*) luaL_checkudata (L, idx, LP_RESOURCES_QUEUE),
-     (GResource*) g_resource_ref (resource));
-}
-
-static const gchar* nexttemplate (lua_State* L, const gchar* path)
-{
-  const char* l;
-
-  while (*path == *LUA_PATH_SEP)
-    path++;
-  if (*path == '\0')
-    return NULL;
-  if ((l = strchr (path, *LUA_PATH_SEP)) == NULL)
-    l = path + strlen (path);
-return (lua_pushlstring (L, path, l - path), l);
-}
-
-static GBytes* open (lua_State* L, const gchar* fullpath, GError** error)
-{
+  g_return_val_if_fail (package != NULL, NULL);
+  g_return_val_if_fail (path != NULL, NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
   GBytes* bytes = NULL;
   GError* tmperr = NULL;
-  GList* list = NULL;
-  GQueue* queue = NULL;
+  GList* list;
 
-  lua_getfield (L, lua_upvalueindex (1), "resources");
-
-  queue = lua_touserdata (L, -1);
-  list = g_queue_peek_head_link (queue);
-        lua_pop (L, 1);
-
-  for (; list; list = list->next)
+  for (list = g_queue_peek_head_link (&package->queue); list; list = list->next)
     {
-      if ((bytes = g_resource_lookup_data (list->data, fullpath, 0, &tmperr)), (tmperr == NULL))
-        break;
-      else
+      if ((bytes = g_resource_lookup_data (list->data, path, 0, &tmperr)) == NULL)
         {
           if (g_error_matches (tmperr, G_RESOURCE_ERROR, G_RESOURCE_ERROR_NOT_FOUND))
-            g_error_free (tmperr);
+            g_clear_error (&tmperr);
           else
             {
               g_propagate_error (error, tmperr);
@@ -104,98 +103,57 @@ static GBytes* open (lua_State* L, const gchar* fullpath, GError** error)
         }
     }
 
-  if (G_UNLIKELY (bytes == NULL))
+  if (bytes == NULL)
     {
-      const GQuark domain = G_RESOURCE_ERROR;
-      const guint code = G_RESOURCE_ERROR_NOT_FOUND;
-      const gchar* message = "not found";
-
-      g_set_error_literal (error, domain, code, message);
+      g_set_error_literal (error, G_RESOURCE_ERROR, G_RESOURCE_ERROR_NOT_FOUND, "not found");
     }
-return bytes;
+return (bytes);
 }
 
-static GBytes* search (lua_State* L, const gchar* name, const gchar* path)
+/**
+ * lp_package_new: (constructor)
+ *
+ * Creates a #LpPackage instance.
+ *
+ * Returns: (transfer full): a new #LpPackage instance.
+ */
+LpPackage* lp_package_new ()
 {
-  luaL_Buffer B;
-  GBytes* bytes = NULL;
+  LpPackage* self;
 
-  name = luaL_gsub (L, name, ".", LUA_DIRSEP);
-
-  luaL_buffinit (L, &B);
-
-  while ((path = nexttemplate (L, path)) != NULL)
-    {
-      GError* tmperr = NULL;
-      const gchar* template = template = luaL_checkstring (L, -1);
-      const gchar* fullpath = fullpath = luaL_gsub (L, template, LUA_PATH_MARK, name);
-
-      lua_remove (L, -2);
-
-      if ((bytes = open (L, fullpath, &tmperr)), G_LIKELY (tmperr == NULL))
-        return bytes;
-      else
-        {
-          if (g_error_matches (tmperr, G_RESOURCE_ERROR, G_RESOURCE_ERROR_NOT_FOUND))
-            {
-              lua_pushfstring (L, "\n\tno resource '%s'", fullpath);
-              g_error_free (tmperr);
-              lua_remove (L, -2);
-              luaL_addvalue (& B);
-            }
-          else
-            {
-              const guint code = tmperr->code;
-              const gchar* domain = g_quark_to_string (tmperr->domain);
-              const gchar* message = tmperr->message;
-
-              lua_pushfstring (L, "%s: %i: %s", domain, code, message);
-              g_error_free (tmperr);
-              lua_error (L);
-            }
-        }
-    }
-return (luaL_pushresult (&B), NULL);
+  self = g_slice_new (LpPackage);
+  self->ref_count = 1;
+return (g_queue_init (&self->queue), self);
 }
 
-int lp_package_searcher (lua_State* L)
+/**
+ * lp_package_ref:
+ * @package: #LpPackage instance.
+ *
+ * Increments @package reference count.
+ * 
+ * Returns: (transfer full): a new reference to @package.
+ */
+LpPackage* lp_package_ref (LpPackage* package)
 {
-  GBytes* bytes = NULL;
-  GError* tmperr = NULL;
-  const gchar* name = NULL;
-  const gchar* path = NULL;
-  int type, result;
+  g_return_val_if_fail (package != NULL, NULL);
+  g_atomic_int_inc (&package->ref_count);
+return package;
+}
 
-  if ((lua_getfield (L, lua_upvalueindex (1), "path"), (type = lua_type (L, -1))), G_UNLIKELY (type != LUA_TSTRING))
-    luaL_error (L, "package.path must be an string");
-  if ((lua_getfield (L, lua_upvalueindex (1), "resources"), (type = lua_type (L, -1))), G_UNLIKELY (type != LUA_TUSERDATA))
-    luaL_error (L, "package.path must be an string");
-  else
+/**
+ * lp_package_unref:
+ * @package: #LpPackage instance.
+ *
+ * Decrements @package reference count.
+ */
+void lp_package_unref (LpPackage* package)
+{
+  g_return_if_fail (package != NULL);
+
+  if (g_atomic_int_dec_and_test (&package->ref_count))
     {
-      luaL_checkudata (L, -1, LP_RESOURCES_QUEUE);
-      lua_pop (L, 1);
+      g_queue_clear_full (&package->queue, (GDestroyNotify) g_resource_unref);
+      g_slice_free (LpPackage, package);
     }
-
-  name = luaL_checkstring (L, 1);
-  path = lua_tostring (L, -1);
-
-  if ((bytes = search (L, name, path)) != NULL)
-    {
-      lua_pushliteral (L, "=");
-      lua_insert (L, -2);
-      lua_concat (L, 2);
-
-      gsize size;
-      const gchar* name = lua_tostring (L, -1);
-      const gchar* data = g_bytes_get_data (bytes, &size);
-
-      switch ((result = luaL_loadbuffer (L, data, size, name)))
-        {
-          case LUA_OK: break;
-          case LUA_ERRSYNTAX: lua_error (L); break;
-          case LUA_ERRMEM: g_error ("(" G_STRLOC "): out of memory");
-          default: g_error ("(" G_STRLOC "): unknown error %i", result);
-        }
-    }
-return 1;
 }

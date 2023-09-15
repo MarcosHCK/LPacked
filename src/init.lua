@@ -22,25 +22,60 @@ local Lp = lgi.require ('LPacked')
 local lpacked = {}
 
 do
-  function lpacked.main (args)
-    local app = Lp.Application.new ()
+  local Gio = lgi.require ('Gio', '2.0')
+  local GLib = lgi.require ('GLib', '2.0')
 
-    function app:on_activate ()
-      if (self.exec) then
-        app:open ({}, 'exec')
+  local package_ = Lp.Package ()
+  local resource_ = Gio.Resource ((...), false)
+
+  local function searchpath (name, path, sep, rep)
+    local bytes
+    local errors
+    local fullpath
+    local reason
+
+    errors = { '', }
+    rep = rep or '/'
+    sep = sep or '.'
+
+    name = name:gsub ('%' .. sep, rep)
+
+    for template in path:gmatch ('([^;]+)') do
+      fullpath = template:gsub ('?', name)
+      bytes, reason = package_:lookup (fullpath)
+
+      if (bytes) then
+        return bytes, fullpath
       else
-        error ('unimplemented')
+        if (reason:matches (Gio.ResourceError, Gio.ResourceError.NOT_FOUND)) then
+          table.insert (errors, ('\tno resource \'%s\''):format (fullpath))
+        else
+          error (reason)
+        end
       end
     end
-
-    function app:on_open (files)
-      if (self.pack) then
-        log.critical ('--pack option does not takes any additional files')
-      else
-        error ('unimplemented')
-      end
-    end
-  return app:run (args)
+  return nil, table.concat (errors, '\n')
   end
+
+  local function searcher (name)
+    local bytes, result = searchpath (name, '/?.lua;/?/init.lua')
+
+    if (not bytes) then
+      return result
+    else
+      local chunkname = '=' .. result
+---@diagnostic disable-next-line: deprecated
+      local chunk, reason = (loadstring or load) (bytes:get_data (), chunkname)
+      return chunk or reason
+    end
+  end
+
+  package_:insert (resource_)
+
+---@diagnostic disable-next-line: deprecated
+  table.insert (package.searchers or package.loaders, searcher)
+  package.loaded ['org.hck.lpacked'] = lpacked
+
+  require ('org.hck.lpacked.main')
 return lpacked
 end

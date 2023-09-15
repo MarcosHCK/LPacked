@@ -24,6 +24,7 @@
 
 static int doinit (lua_State* L);
 static int msghandler (lua_State* L);
+static int require (lua_State* L);
 static int typelib (lua_State* L);
 
 int main (int argc, char* argv[])
@@ -36,6 +37,8 @@ int main (int argc, char* argv[])
       g_error ("(" G_STRLOC ") luaL_newstate()!");
       g_assert_not_reached ();
     }
+
+  lp_resources_register_resource ();
 
   lua_gc (L, LUA_GCSTOP, -1);
   luaL_openlibs (L);
@@ -52,28 +55,7 @@ int main (int argc, char* argv[])
   lua_getfield (L, -1, "preload");
   lua_pushcfunction (L, luaopen_lgi_corelgilua51);
   lua_setfield (L, -2, "lgi.corelgilua51");
-  lua_pop (L, 1);
-
-#if LUA_VERSION_NUM >= 502
-  lua_getfield (L, -1, "searchers");
-#else // LUA_VERSION_NUM < 502
-  lua_getfield (L, -1, "loaders");
-#endif // LUA_VERSION_NUM
-#if LUA_VERSION_NUM >= 502
-  lua_Unsigned objlen = lua_rawlen (L, -1);
-#else // LUA_VERSION_NUM < 502
-  size_t objlen = lua_objlen (L, -1);
-#endif // LUA_VERSION_NUM
-  lua_insert (L, -2);
-
-  lp_resources_register_resource ();
-  lp_package_create_resources (L);
-  lp_package_insert_resource (L, -1, lp_resources_get_resource ());
-  lua_setfield (L, -2, "resources");
-  lua_pushcclosure (L, lp_package_searcher, 1);
-
-  lua_rawseti (L, -2, objlen + 1);
-  lua_pop (L, 1);
+  lua_pop (L, 2);
 
   lua_pushcfunction (L, msghandler);
   lua_pushcfunction (L, doinit);
@@ -102,8 +84,8 @@ static int doinit (lua_State* L)
   lua_pushcfunction (L, typelib);
   lua_pushliteral (L, "/org/hck/lpacked/LPacked.typelib");
   lua_call (L, 1, 0);
-  lua_getglobal (L, "require");
-  lua_pushliteral (L, "org.hck.lpacked");
+  lua_pushcfunction (L, require);
+  lua_pushliteral (L, "/org/hck/lpacked/init.lua");
   lua_call (L, 1, 1);
   lua_getfield (L, -1, "main");
   lua_pushvalue (L, 1);
@@ -127,6 +109,45 @@ static int msghandler (lua_State* L)
         }
     }
 return (luaL_traceback (L, L, msg, 1), 1);
+}
+
+static int require (lua_State* L)
+{
+  GBytes* bytes = NULL;
+  GError* tmperr = NULL;
+  GResource* resource = lp_resources_get_resource ();
+  const gchar* data = NULL;
+  const gchar* path = luaL_checkstring (L, 1);
+  gsize size = 0;
+  int result;
+
+  lua_pushliteral (L, "=");
+  lua_pushvalue (L, 1);
+  lua_concat (L, 2);
+
+  if ((bytes = g_resource_lookup_data (resource, path, 0, &tmperr)), G_UNLIKELY (tmperr != NULL))
+    {
+      const guint code = tmperr->code;
+      const gchar* domain = g_quark_to_string (tmperr->domain);
+      const gchar* message = tmperr->message;
+
+      lua_pushfstring (L, "%s: %u: %s", domain, code, message);
+      g_error_free (tmperr);
+      lua_error (L);
+    }
+
+  data = g_bytes_get_data (bytes, &size);
+  result = luaL_loadbuffer (L, data, size, lua_tostring (L, -1));
+            g_bytes_unref (bytes);
+
+  switch (result)
+    {
+      case LUA_OK: lua_pushlightuserdata (L, resource); break;
+      case LUA_ERRSYNTAX: lua_error (L);
+      case LUA_ERRMEM: g_error ("(" G_STRLOC ") luaL_loadbuffer()!: out of memory"); break;
+      default: g_error ("(" G_STRLOC ") luaL_loadbuffer()!: unknown error %i", result);
+    }
+return (lua_call (L, 1, 1), 1);
 }
 
 static int typelib (lua_State* L)

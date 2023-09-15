@@ -52,7 +52,7 @@ INTROSPECTION_COMPILER_ARGS=--includedir=$(srcdir)
 
 LPacked.gir: liblpacked.la
 LPacked_gir_CFLAGS=$(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) 
-LPacked_gir_FILES=application.c application.h 
+LPacked_gir_FILES=application.c application.h package.c package.h 
 LPacked_gir_INCLUDES=Gio-2.0 
 LPacked_gir_LIBS=liblpacked.la  
 LPacked_gir_NAMESPACE=LPacked

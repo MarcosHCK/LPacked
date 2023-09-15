@@ -18,6 +18,7 @@
 #define __LP_PACKAGE__
 #include <gio/gio.h>
 
+typedef struct _LpPackage LpPackage;
 #define LP_RESOURCES_QUEUE "lpacked.resources.queue"
 
 #if __cplusplus
@@ -26,10 +27,13 @@ extern "C" {
 
 #include <lua.h>
 
-  void lp_package_create_resources (lua_State* L);
-  void lp_package_delete_resource (lua_State* L, int idx, GResource* resource);
-  void lp_package_insert_resource (lua_State* L, int idx, GResource* resource);
-  int lp_package_searcher (lua_State* L);
+  GType lp_package_get_type (void) G_GNUC_CONST;
+  void lp_package_delete (LpPackage* package, GResource* resource);
+  void lp_package_insert (LpPackage* package, GResource* resource);
+  GBytes* lp_package_lookup (LpPackage* package, const gchar* path, GError** error);
+  LpPackage* lp_package_new ();
+  LpPackage* lp_package_ref (LpPackage* package);
+  void lp_package_unref (LpPackage* package);
 
 #if __cplusplus
 }
