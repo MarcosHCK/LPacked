@@ -31,6 +31,7 @@ do
       if (self.exec) then
         app:open ({}, 'exec')
       elseif (self.pack) then
+        local builder
         local desc
 
         do
@@ -79,6 +80,26 @@ do
             elseif (got ~= type_) then
               local prep = type_ == 'string' and 'an' or 'a'
               error (([[mandatory descriptor field '%s' must contain %s %s value]]):format(prep, type_))
+            end
+          end
+        end
+
+        builder = Lp.PackBuilder ()
+
+        for path, files in pairs (desc.pack) do
+          if (type (path) ~= 'string' or type (files) ~= 'table') then
+            error ([[descriptor field 'pack' table must contain string-table pairs]])
+          else
+            for alias, filename in pairs (files) do
+              if (type (alias) == 'number') then
+                alias = filename
+              end
+
+              local name = Lp.canonicalize_alias (path, alias)
+              local file = Gio.File.new_for_commandline_arg (name)
+              local stream = assert (file:read ())
+
+              builder:add_from_stream (name, stream)
             end
           end
         end
