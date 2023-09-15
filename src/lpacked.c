@@ -87,6 +87,8 @@ static int doinit (lua_State* L)
   lua_pushcfunction (L, require);
   lua_pushliteral (L, "/org/hck/lpacked/init.lua");
   lua_call (L, 1, 1);
+  lua_pushcfunction (L, msghandler);
+  lua_setfield (L, -2, "msghandler");
   lua_getfield (L, -1, "main");
   lua_pushvalue (L, 1);
   lua_call (L, 1, 1);

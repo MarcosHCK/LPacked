@@ -23,6 +23,7 @@ local Lp = lgi.require('LPacked')
 
 do
   local Gio = lgi.require ('Gio', '2.0')
+  local pack = require ('org.hck.lpacked.pack')
 
   function lpacked.main (args)
     local app = Lp.Application.new ()
@@ -31,77 +32,12 @@ do
       if (self.exec) then
         app:open ({}, 'exec')
       elseif (self.pack) then
-        local builder
-        local desc
+        local file = Gio.File.new_for_commandline_arg (self.pack)
+        local functor = function () pack (file, self.pack_output) end
+        local success, reason = xpcall (functor, lpacked.msghandler)
 
-        do
-          local chunk
-          local env = { math = { huge = math.huge, } }
-
-          do
-            local file = Gio.File.new_for_commandline_arg (self.pack)
-            local info = assert (file:query_info ('standard::size', 0))
-            local stream = assert (file:read ())
-            local left = info:get_size ()
-
-            chunk = assert (load (function ()
-                if (left == 0) then
-                  return nil
-                else
-                  local bytes = stream:read_bytes (left)
-                  local done = bytes:get_size ()
-                    left = left - done
-                  return bytes:get_data ()
-                end
-              end, '=descriptor', 't', env))
-          end
-
-          ---@diagnostic disable-next-line: deprecated
-          desc = not setfenv and chunk () or setfenv (chunk, env) ()
-        end
-
-        do
-          -- Check fields
-          local optional = { description = 'string', main = 'string', }
-          local mandatory = { name = 'string', pack = 'table', }
-
-          for field, type_ in pairs (optional) do
-            local got = type (desc [field])
-            if (got ~= 'nil' and got ~= type_) then
-              local prep = type_ == 'string' and 'an' or 'a'
-              error (([[optional descriptor field '%s' must contain %s %s value]]):format(prep, type_))
-            end
-          end
-
-          for field, type_ in pairs (mandatory) do
-            local got = type (desc [field])
-            if (got == 'nil') then
-              error (([[mandatory descriptor field '%s' is missing]]):format (field))
-            elseif (got ~= type_) then
-              local prep = type_ == 'string' and 'an' or 'a'
-              error (([[mandatory descriptor field '%s' must contain %s %s value]]):format(prep, type_))
-            end
-          end
-        end
-
-        builder = Lp.PackBuilder ()
-
-        for path, files in pairs (desc.pack) do
-          if (type (path) ~= 'string' or type (files) ~= 'table') then
-            error ([[descriptor field 'pack' table must contain string-table pairs]])
-          else
-            for alias, filename in pairs (files) do
-              if (type (alias) == 'number') then
-                alias = filename
-              end
-
-              local name = Lp.canonicalize_alias (path, alias)
-              local file = Gio.File.new_for_commandline_arg (name)
-              local stream = assert (file:read ())
-
-              builder:add_from_stream (name, stream)
-            end
-          end
+        if (not success) then
+          log.critical (reason)
         end
       end
     end
