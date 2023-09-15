@@ -23,6 +23,8 @@ local Lp = lgi.require('LPacked')
 
 do
   local Gio = lgi.require ('Gio', '2.0')
+  local GLib = lgi.require ('GLib', '2.0')
+  local serialization = require ('org.hck.lpacked.serialization')
 
   local function pack (file, output)
     local builder
@@ -78,6 +80,19 @@ do
     end
 
     builder = Lp.PackBuilder ()
+
+    do
+      local manifest =
+        {
+          description = desc.description,
+          main = desc.main,
+          name = desc.name,
+        }
+
+      local data = serialization.serialize (manifest)
+      local bytes = GLib.Bytes (data)
+      builder:add_from_bytes ("/manifest.lua", bytes)
+    end
 
     for path, files in pairs (desc.pack) do
       if (type (path) ~= 'string' or type (files) ~= 'table') then
