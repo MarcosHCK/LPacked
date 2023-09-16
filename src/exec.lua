@@ -24,12 +24,41 @@ local Lp = lgi.require('LPacked')
 do
   local Gio = lgi.require ('Gio', '2.0')
 
-  local function exec (file)
-    local stream = assert (file:read ())
+  local function exec (main, files)
     local reader = Lp.PackReader ()
-      assert (reader:add_from_stream (stream))
-    local stream = assert (reader:open ('manifest.lua'))
-      print (stream:read_bytes (25):get_data ())
+    local manifest
+
+    for _, file in ipairs (files) do
+      reader:add_from_file (file)
+    end
+
+    assert (reader:contains (main), ('no such file \'%s\''):format (main))
+
+    do
+      local chunk
+      local env = { math = { huge = math.huge, } }
+          env = _G
+
+      do
+        local info = assert (reader:query_info (main, 'standard::size'))
+        local stream = assert (reader:open (main))
+        local left = info:get_size ()
+
+        chunk = assert (load (function ()
+            if (left == 0) then
+              return nil
+            else
+              local bytes = stream:read_bytes (left)
+              local done = bytes:get_size ()
+                left = left - done
+              return bytes:get_data ()
+            end
+          end, '=' .. main, 't', env))
+      end
+
+      ---@diagnostic disable-next-line: deprecated
+      manifest = not setfenv and chunk () or setfenv (chunk, env) ()
+    end
   end
 return exec
 end

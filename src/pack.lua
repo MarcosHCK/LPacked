@@ -38,8 +38,14 @@ do
         local info = assert (file:query_info ('standard::size', 0))
         local stream = assert (file:read ())
         local left = info:get_size ()
+        local pre = true
 
         chunk = assert (load (function ()
+            if (pre) then
+              pre = false
+              return 'return '
+            end
+
             if (left == 0) then
               return nil
             else
