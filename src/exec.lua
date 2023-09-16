@@ -27,7 +27,9 @@ do
   local function exec (file)
     local stream = assert (file:read ())
     local reader = Lp.PackReader ()
-      reader:add_from_stream (stream)
+      assert (reader:add_from_stream (stream))
+    local stream = assert (reader:open ('manifest.lua'))
+      print (stream:read_bytes (25):get_data ())
   end
 return exec
 end

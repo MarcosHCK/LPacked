@@ -41,7 +41,10 @@ extern "C" {
   gboolean lp_pack_reader_add_from_file (LpPackReader* reader, GFile* file, GError** error);
   gboolean lp_pack_reader_add_from_filename (LpPackReader* reader, const gchar* filename, GError** error);
   gboolean lp_pack_reader_add_from_stream (LpPackReader* reader, GInputStream* stream, GError** error);
+  gboolean lp_pack_reader_contains (LpPackReader* reader, const gchar* path);
   LpPackReader* lp_pack_reader_new ();
+  GInputStream* lp_pack_reader_open (LpPackReader* reader, const gchar* path, GError** error);
+  GFileInfo* lp_pack_reader_query_info (LpPackReader* reader, const gchar* path, const gchar* attributes, GError** error);
 
 #if __cplusplus
 }

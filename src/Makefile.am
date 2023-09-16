@@ -20,7 +20,7 @@ resources_FILES=$(shell $(GLIB_COMPILE_RESOURCES) --generate-dependencies resour
 bin_PROGRAMS=lpacked
 pkglib_LTLIBRARIES=liblpacked.la
 noinst_DATA=$(resources_FILES) 
-noinst_HEADERS=application.h builder.h compat.h format.h package.h reader.h 
+noinst_HEADERS=application.h builder.h compat.h format.h package.h readaux.h reader.h 
 SUFFIXES=.gir .typelib 
 
 liblpacked_la_CFLAGS=$(ARCHIVE_CFLAGS) $(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) -flto 

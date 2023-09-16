@@ -15,18 +15,9 @@
  * along with LPacked. If not, see <http://www.gnu.org/licenses/>.
  */
 #include <config.h>
-#include <archive.h>
-#include <archive_entry.h>
-#include <format.h>
-#include <reader.h>
+#include <readaux.h>
 
 #define _g_object_unref0(var) ((var == NULL) ? NULL : (var = (g_object_unref (var), NULL)))
-
-typedef struct archive Archive;
-typedef struct archive_entry ArchiveEntry;
-typedef struct _File File;
-typedef struct _Reader Reader;
-typedef struct _Source Source;
 
 struct _LpPackReader
 {
@@ -36,77 +27,20 @@ struct _LpPackReader
   GTree* vfs;
 };
 
-struct _File
+struct _LpPackReaderStream
 {
-  gchar* path;
-  guint hash;
+  GInputStream parent;
+
+  /* <private> */
+  Archive* ar;
+  Reader reader;
+  Source* source;
 };
 
-struct _Source
-{
-  guint refs : (sizeof (guint) << 3) - 2;
-  guint type : 2;
-
-  union
-  {
-    GBytes* bytes;
-    GFile* file;
-    GInputStream* stream;
-  };
-} *source;
-
-enum
-{
-  prop_0,
-  prop_base_file,
-  prop_number,
-};
-
-enum
-{
-  source_bytes,
-  source_file,
-  source_stream,
-};
-
-G_DEFINE_FINAL_TYPE (LpPackReader, lp_pack_reader, G_TYPE_OBJECT);
 G_DEFINE_QUARK (lp-pack-reader-error-quark, lp_pack_reader_error);
-
-static GParamSpec* properties [prop_number] = {0};
-
-static int file_cmp (File* file_a, File* file_b)
-{
-  if (file_a->hash != file_b->hash)
-    return file_a->hash - file_b->hash;
-  else
-    return g_strcmp0 (file_a->path, file_b->path);
-}
-
-static void file_free (File* file)
-{
-  g_free (file->path);
-  g_slice_free (File, file);
-}
-
-static Source* source_ref (Source* source)
-{
-  return (++source->refs, source);
-}
-
-static void source_unref (Source* source)
-{
-  if (--source->refs == 0)
-    {
-      switch (source->type)
-        {
-          case source_bytes: g_bytes_unref (source->bytes); break;
-          case source_file: g_object_unref (source->file); break;
-          case source_stream: g_object_unref (source->stream); break;
-        }
-
-      g_slice_free (Source, source);
-    }
-}
+G_DEFINE_FINAL_TYPE (LpPackReader, lp_pack_reader, G_TYPE_OBJECT);
+G_DECLARE_FINAL_TYPE (LpPackReaderStream, lp_pack_reader_stream, LP, PACK_READER_STREAM, GInputStream);
+G_DEFINE_FINAL_TYPE (LpPackReaderStream, lp_pack_reader_stream, G_TYPE_INPUT_STREAM);
 
 static void lp_pack_reader_init (LpPackReader* self)
 {
@@ -137,108 +71,43 @@ static void lp_pack_reader_class_init (LpPackReaderClass* klass)
   G_OBJECT_CLASS (klass)->finalize = lp_pack_reader_class_finalize;
 }
 
-struct _Reader
+static void lp_pack_reader_stream_init (LpPackReaderStream* self)
 {
-  gchar buffer [512];
-  GError* error;
-
-  union
-  {
-    GFile* file;
-    GInputStream* stream;
-  };
-};
-
-static int on_close (struct archive* ar, void* user_data)
-{
-  GError** error = & G_STRUCT_MEMBER (GError*, user_data, G_STRUCT_OFFSET (Reader, error));
-  GInputStream* stream = G_STRUCT_MEMBER (gpointer, user_data, G_STRUCT_OFFSET (Reader, stream));
-  int result = ARCHIVE_OK;
-
-  if ((result = g_input_stream_close (stream, NULL, error)), G_UNLIKELY (result == FALSE))
-    result = ARCHIVE_FATAL;
-return (g_object_unref (stream), result);
 }
 
-static int on_open (struct archive* ar, void* user_data)
+static gboolean lp_pack_reader_stream_class_close_fn (GInputStream* pself, GCancellable* cancellable, GError** error)
 {
-  GError** error = & G_STRUCT_MEMBER (GError*, user_data, G_STRUCT_OFFSET (Reader, error));
-  GFile* file = G_STRUCT_MEMBER (gpointer, user_data, G_STRUCT_OFFSET (Reader, file));
-  GFileInputStream* stream = NULL;
-  int result = ARCHIVE_OK;
-
-  if ((stream = g_file_read (file, NULL, error)), G_UNLIKELY (stream == NULL))
-    result = ARCHIVE_FATAL;
-  G_STRUCT_MEMBER (gpointer, user_data, G_STRUCT_OFFSET (Reader, stream)) = stream;
-return (result);
+  LpPackReaderStream* self = (gpointer) pself;
+return (closepack (self->ar, self->source, &self->reader, error) == ARCHIVE_OK);
 }
 
-G_STATIC_ASSERT (sizeof (la_ssize_t) == sizeof (gssize));
-G_STATIC_ASSERT (sizeof (la_int64_t) == sizeof (gssize));
-
-static la_ssize_t on_read (struct archive* ar, void* user_data, const void** out_buffer)
+static gssize lp_pack_reader_stream_class_read_fn (GInputStream* pself, void* buffer, gsize count, GCancellable* cancellable, GError** error)
 {
-  gchar* buffer = & G_STRUCT_MEMBER (gchar, user_data, G_STRUCT_OFFSET (Reader, buffer [0]));
-  GError** error = & G_STRUCT_MEMBER (GError*, user_data, G_STRUCT_OFFSET (Reader, error));
-  GInputStream* stream = G_STRUCT_MEMBER (gpointer, user_data, G_STRUCT_OFFSET (Reader, stream));
-  const gsize count = G_SIZEOF_MEMBER (Reader, buffer);
-  gssize result = ARCHIVE_OK;
+  LpPackReaderStream* self = (gpointer) pself;
+  la_ssize_t result;
 
-  if ((result = g_input_stream_read (stream, buffer, count, NULL, error)), G_UNLIKELY (result < 0))
-    result = (gssize) ARCHIVE_FATAL;
-return (*out_buffer = buffer, result);
-}
-
-static la_int64_t on_skip (struct archive* ar, void* user_data, la_int64_t request)
-{
-  GError** error = & G_STRUCT_MEMBER (GError*, user_data, G_STRUCT_OFFSET (Reader, error));
-  GInputStream* stream = G_STRUCT_MEMBER (gpointer, user_data, G_STRUCT_OFFSET (Reader, stream));
-  gssize result = ARCHIVE_OK;
-
-  if ((result = g_input_stream_skip (stream, request, NULL, error)), G_UNLIKELY (result < 0))
-    result = ARCHIVE_FATAL;
-return (result);
-}
-
-static int openpack (LpPackReader* self, Archive* ar, Source* source, Reader* reader, GError** error)
-{
-  switch (source->type)
+  if ((result = archive_read_data (self->ar, buffer, count)), G_UNLIKELY (result < 0))
     {
-      case source_bytes:
-        {
-          gsize size;
-          gconstpointer data = g_bytes_get_data (source->bytes, &size);
-          return archive_read_open_memory (ar, data, size);
-        }
-
-      case source_file:
-        reader->file = source->file;
-        return archive_read_open2 (ar, reader, on_open, on_read, on_skip, on_close);
-
-      case source_stream:
-        reader->stream = source->stream;
-        return archive_read_open2 (ar, reader, NULL, on_read, on_skip, NULL);
+      report (error, archive_read_data, self->ar, &self->reader);
+      return -1;
     }
-return ARCHIVE_FAILED;
+return (gssize) result;
 }
 
-#define report(error, funcname, ar, reader) \
-  G_STMT_START { \
-    Archive* __archive = (ar); \
-    GError** __error = (error); \
-    Reader* __reader = (reader); \
- ; \
-    if (G_LIKELY (__reader->error != NULL)) \
-      g_propagate_error (error, __reader->error); \
-    else \
-      { \
-        const GQuark __domain = LP_PACK_READER_ERROR; \
-        const guint __code = LP_PACK_READER_ERROR_WRITE; \
-        const gchar* __strerror = archive_error_string (__archive); \
- ; \
-        g_set_error (__error, __domain, __code, #funcname "()!: %s", __strerror); \
-      } \
-  } G_STMT_END
+static void lp_pack_reader_stream_class_dispose (GObject* pself)
+{
+  LpPackReaderStream* self = (gpointer) pself;
+  g_clear_pointer (&self->ar, (GDestroyNotify) archive_read_free);
+  g_clear_pointer (&self->source, (GDestroyNotify) source_unref);
+  G_OBJECT_CLASS (lp_pack_reader_parent_class)->dispose (pself);
+}
+
+static void lp_pack_reader_stream_class_init (LpPackReaderStreamClass* klass)
+{
+  G_INPUT_STREAM_CLASS (klass)->close_fn = lp_pack_reader_stream_class_close_fn;
+  G_INPUT_STREAM_CLASS (klass)->read_fn = lp_pack_reader_stream_class_read_fn;
+  G_OBJECT_CLASS (klass)->dispose = lp_pack_reader_stream_class_dispose;
+}
 
 static int walkpack (LpPackReader* self, Archive* ar, Source* source, Reader* reader, GError** error)
 {
@@ -276,25 +145,13 @@ static gboolean scanpack (LpPackReader* self, Source* source, GError** error)
 
   ar = archive_read_new ();
 
-  if ((result = archive_read_append_filter (ar, LP_PACK_COMPRESSION)), G_UNLIKELY (result != ARCHIVE_OK))
-    g_set_error (error, LP_PACK_READER_ERROR, LP_PACK_READER_ERROR_OPEN, "archive_read_append_filter()!: %s", archive_error_string (ar));
-  else if ((result = archive_read_set_format (ar, LP_PACK_FORMAT)), G_UNLIKELY (result != ARCHIVE_OK))
-    g_set_error (error, LP_PACK_READER_ERROR, LP_PACK_READER_ERROR_OPEN, "archive_read_set_format()!: %s", archive_error_string (ar));
-  else if ((result = openpack (self, ar, source, &reader, error)), G_LIKELY (result == ARCHIVE_OK))
+  if ((result = openpack (ar, source, &reader, error)), G_LIKELY (result == ARCHIVE_OK))
     {
-      if ((result = walkpack (self, ar, source, &reader, error)), G_LIKELY (result == ARCHIVE_OK))
-      if ((result = archive_read_close (ar)), G_UNLIKELY (result != ARCHIVE_OK))
+      if ((result = walkpack (self, ar, source, &reader, error)), G_UNLIKELY (result != ARCHIVE_OK))
+        closepack (ar, source, &reader, NULL);
+      else
         {
-          if (G_LIKELY (reader.error != NULL))
-            g_propagate_error (error, reader.error);
-          else
-            {
-              const GQuark domain = LP_PACK_READER_ERROR;
-              const guint code = LP_PACK_READER_ERROR_CLOSE;
-              const gchar* message = archive_error_string (ar);
-
-              g_set_error (error, domain, code, "archive_read_close()!: %s", message);
-            }
+          result = closepack (ar, source, &reader, error);
         }
     }
 return (archive_read_free (ar), result == ARCHIVE_OK);
@@ -388,7 +245,7 @@ gboolean lp_pack_reader_add_from_stream (LpPackReader* reader, GInputStream* str
   if (G_IS_SEEKABLE (stream) && g_seekable_can_seek (G_SEEKABLE (stream)))
     {
       /* Resetable stream */
-      Source template = { .refs = 1, .type = source_stream, .stream = g_object_ref (stream), };
+      Source template = { .refs = 1, .blocked = FALSE, .type = source_stream, .stream = g_object_ref (stream), };
       Source* source = g_slice_dup (Source, &template);
       gboolean good = scanpack (self, source, error);
       return (source_unref (source), good);
@@ -413,6 +270,25 @@ gboolean lp_pack_reader_add_from_stream (LpPackReader* reader, GInputStream* str
 }
 
 /**
+ * lp_pack_reader_contains:
+ * @reader: #LpPackReader instance.
+ * @path: path to look up in @reader.
+ * 
+ * Returns: whether @reader contains @path.
+*/
+gboolean lp_pack_reader_contains (LpPackReader* reader, const gchar* path)
+{
+  g_return_val_if_fail (LP_IS_PACK_READER (reader), FALSE);
+  g_return_val_if_fail (path != NULL, FALSE);
+  LpPackReader* self = (reader);
+  gchar* canon = (gchar*) g_canonicalize_filename (path, "/");
+  gchar* value = (gchar*) g_path_skip_root (canon);
+  File file = { .path = value, .hash = g_str_hash (value), };
+  gboolean has = g_tree_lookup_extended (self->vfs, &file, NULL, NULL);
+return (g_free (canon), has);
+}
+
+/**
  * lp_pack_reader_new: (constructor)
  * 
  * Creates and initializes a #LpPackReader instance.
@@ -422,4 +298,216 @@ gboolean lp_pack_reader_add_from_stream (LpPackReader* reader, GInputStream* str
 LpPackReader* lp_pack_reader_new ()
 {
   return g_object_new (LP_TYPE_PACK_READER, NULL);
+}
+
+/**
+ * lp_pack_reader_open:
+ * @reader: #LpPackReader instance.
+ * @path: path to look up in @reader.
+ * @error: return location for a #GError, or %NULL.
+ * 
+ * Opens packed file @path
+ * 
+ * Returns: (transfer full): a #GInputStream where to read @path.
+*/
+GInputStream* lp_pack_reader_open (LpPackReader* reader, const gchar* path, GError** error)
+{
+  g_return_val_if_fail (LP_IS_PACK_READER (reader), NULL);
+  g_return_val_if_fail (path != NULL, NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
+  LpPackReader* self = (reader);
+  gchar* canon = (gchar*) g_canonicalize_filename (path, "/");
+  gchar* value = (gchar*) g_path_skip_root (canon);
+  File file = { .path = value, .hash = g_str_hash (value), };
+  Source* source = g_tree_lookup (self->vfs, &file);
+  LpPackReaderStream* stream = NULL;
+  int result;
+
+  if (G_UNLIKELY (source == NULL))
+    g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "path '%s' not found", path);
+  else
+    {
+      stream = g_object_new (lp_pack_reader_stream_get_type (), NULL);
+      stream->ar = archive_read_new ();
+      stream->source = source_ref (source);
+
+      if ((result = openpack (stream->ar, stream->source, &stream->reader, error)), G_UNLIKELY (result != ARCHIVE_OK))
+        {
+          g_input_stream_close ((GInputStream*) stream, NULL, NULL);
+          g_clear_object (&stream);
+        }
+      else
+        {
+          ArchiveEntry* ent = NULL;
+
+          while (TRUE)
+            {
+              if ((result = archive_read_next_header (stream->ar, &ent)), G_UNLIKELY (result != ARCHIVE_OK))
+                {
+                  report (error, archive_read_next_header, stream->ar, &stream->reader);
+                  break;
+                }
+              else if (G_UNLIKELY (result == ARCHIVE_EOF))
+                g_assert_not_reached ();
+              else
+                {
+                  const gchar* pathname = archive_entry_pathname_utf8 (ent);
+                  File file2 = { .path = (gchar*) pathname, .hash = g_str_hash (pathname), };
+
+                  if (file_cmp (&file, &file2) == 0)
+                    break;
+                }
+            }
+
+          if (G_UNLIKELY (result != ARCHIVE_OK))
+            {
+              g_input_stream_close ((GInputStream*) stream, NULL, NULL);
+              g_clear_object (&stream);
+            }
+        }
+    }
+return (GInputStream*) stream;
+}
+
+/**
+ * lp_pack_reader_query_info:
+ * @reader: #LpPackReader instance.
+ * @path: path to look up in @reader.
+ * @attributes: an attribute query string.
+ * @error: return location for a #GError, or %NULL.
+ *
+ * Queries info about @path.
+ *
+ * Returns: (transfer full): a #GFileInfo containig info about @path.
+ */
+GFileInfo* lp_pack_reader_query_info (LpPackReader* reader, const gchar* path, const gchar* attributes, GError** error)
+{
+  g_return_val_if_fail (LP_IS_PACK_READER (reader), NULL);
+  g_return_val_if_fail (path != NULL, NULL);
+  g_return_val_if_fail (attributes != NULL, NULL);
+  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
+  LpPackReader* self = (reader);
+  gchar* canon = (gchar*) g_canonicalize_filename (path, "/");
+  gchar* value = (gchar*) g_path_skip_root (canon);
+  File file = { .path = value, .hash = g_str_hash (value), };
+  Source* source = g_tree_lookup (self->vfs, &file);
+  GFileInfo* info = NULL;
+  int result;
+
+  if (G_UNLIKELY (source == NULL))
+    g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "path '%s' not found", path);
+  else
+    {
+      Archive* ar = NULL;
+      ArchiveEntry* ent = NULL;
+      Reader reader = {0};
+
+      if ((result = openpack (ar = archive_read_new (), source, &reader, error)), G_LIKELY (result == ARCHIVE_OK))
+        {
+          while (TRUE)
+            {
+              if ((result = archive_read_next_header (ar, &ent)), G_UNLIKELY (result != ARCHIVE_OK))
+                {
+                  report (error, archive_read_next_header, ar, &reader);
+                  break;
+                }
+              else if (G_UNLIKELY (result == ARCHIVE_EOF))
+                g_assert_not_reached ();
+              else
+                {
+                  const gchar* pathname = archive_entry_pathname_utf8 (ent);
+                  File file2 = { .path = (gchar*) pathname, .hash = g_str_hash (pathname), };
+
+                  if (file_cmp (&file, &file2) == 0)
+                    break;
+                }
+            }
+
+          if (G_UNLIKELY (result != ARCHIVE_OK))
+            closepack (ar, source, &reader, NULL);
+          else
+            {
+              GFileAttributeMatcher* matcher = NULL;
+
+              matcher = g_file_attribute_matcher_new (attributes);
+              info = g_file_info_new ();
+
+              if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_STANDARD_TYPE))
+                g_file_info_set_file_type (info, G_FILE_TYPE_REGULAR);
+              if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_STANDARD_IS_HIDDEN))
+                g_file_info_set_is_hidden (info, FALSE);
+              if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_STANDARD_NAME))
+                {
+                  gchar* pathname = (gchar*) archive_entry_pathname (ent);
+                  gchar* basename = (gchar*) g_path_get_basename (pathname);
+
+                  g_file_info_set_name (info, basename);
+                  g_free (basename);
+                }
+              if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME))
+                {
+                  gchar* pathname = (gchar*) archive_entry_pathname_utf8 (ent);
+                  gchar* basename = (gchar*) g_path_get_basename (pathname);
+
+                  g_file_info_set_display_name (info, basename);
+                  g_free (basename);
+                }
+              if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_STANDARD_EDIT_NAME))
+                {
+                  gchar* pathname = (gchar*) archive_entry_pathname_utf8 (ent);
+                  gchar* basename = (gchar*) g_path_get_basename (pathname);
+
+                  g_file_info_set_edit_name (info, basename);
+                  g_free (basename);
+                }
+              if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_STANDARD_COPY_NAME))
+                {
+                  gchar* pathname = (gchar*) archive_entry_pathname_utf8 (ent);
+                  gchar* basename = (gchar*) g_path_get_basename (pathname);
+
+                  g_file_info_set_attribute_string (info, G_FILE_ATTRIBUTE_STANDARD_COPY_NAME, basename);
+                  g_free (basename);
+                }
+
+              if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_STANDARD_SIZE))
+                g_file_info_set_size (info, (goffset) archive_entry_size (ent));
+              if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_STANDARD_ALLOCATED_SIZE))
+                g_file_info_set_attribute_uint64 (info, G_FILE_ATTRIBUTE_STANDARD_ALLOCATED_SIZE, archive_entry_size (ent));
+              if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_STANDARD_SYMLINK_TARGET))
+                g_file_info_set_symlink_target (info, archive_entry_symlink (ent));
+              if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_ACCESS_CAN_READ))
+                g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_READ, TRUE);
+
+              if (archive_entry_atime_is_set (ent))
+                {
+                  if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_TIME_ACCESS))
+                    g_file_info_set_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_ACCESS, archive_entry_atime (ent));
+                  if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_TIME_ACCESS_NSEC))
+                    g_file_info_set_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_ACCESS_NSEC, archive_entry_atime_nsec (ent));
+                }
+
+              if (archive_entry_birthtime_is_set (ent))
+                {
+                  if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_TIME_CREATED))
+                    g_file_info_set_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_CREATED, archive_entry_birthtime (ent));
+                  if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_TIME_CREATED_NSEC))
+                    g_file_info_set_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_CREATED_NSEC, archive_entry_birthtime_nsec (ent));
+                }
+
+              if (archive_entry_ctime_is_set (ent))
+                {
+                  if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_TIME_CHANGED))
+                    g_file_info_set_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_CHANGED, archive_entry_ctime (ent));
+                  if (g_file_attribute_matcher_matches (matcher, G_FILE_ATTRIBUTE_TIME_CHANGED_NSEC))
+                    g_file_info_set_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_CHANGED_NSEC, archive_entry_ctime_nsec (ent));
+                }
+
+              g_file_attribute_matcher_unref (matcher);
+
+              if ((result = closepack (ar, source, &reader, error)), G_UNLIKELY (result != ARCHIVE_OK))
+                g_clear_object (&info);
+            }
+        }
+    }
+return info;
 }
