@@ -37,10 +37,10 @@ extern "C" {
 
   GQuark lp_pack_reader_error_quark (void) G_GNUC_CONST;
 
-  void lp_pack_reader_add_from_bytes (LpPackReader* reader, GBytes* bytes);
+  gboolean lp_pack_reader_add_from_bytes (LpPackReader* reader, GBytes* bytes, GError** error);
   gboolean lp_pack_reader_add_from_file (LpPackReader* reader, GFile* file, GError** error);
   gboolean lp_pack_reader_add_from_filename (LpPackReader* reader, const gchar* filename, GError** error);
-  void lp_pack_reader_add_from_stream (LpPackReader* reader, GInputStream* stream);
+  gboolean lp_pack_reader_add_from_stream (LpPackReader* reader, GInputStream* stream, GError** error);
   LpPackReader* lp_pack_reader_new ();
 
 #if __cplusplus

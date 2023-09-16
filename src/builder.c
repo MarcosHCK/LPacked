@@ -18,6 +18,7 @@
 #include <archive.h>
 #include <archive_entry.h>
 #include <builder.h>
+#include <format.h>
 
 typedef struct _Source Source;
 
@@ -355,9 +356,9 @@ gboolean lp_pack_builder_write_to_stream (LpPackBuilder* builder, GOutputStream*
   G_STATIC_ASSERT (sizeof (la_ssize_t) == sizeof (gssize));
   G_STATIC_ASSERT (sizeof (size_t) == sizeof (gsize));
 
-  if ((result = archive_write_add_filter (ar, ARCHIVE_FILTER_XZ)), G_UNLIKELY (result != ARCHIVE_OK))
+  if ((result = archive_write_add_filter (ar, LP_PACK_COMPRESSION)), G_UNLIKELY (result != ARCHIVE_OK))
     g_set_error (error, LP_PACK_BUILDER_ERROR, LP_PACK_BUILDER_ERROR_OPEN, "archive_write_add_filter()!: %s", archive_error_string (ar));
-  else if ((result = archive_write_set_format (ar, ARCHIVE_FORMAT_TAR_GNUTAR)), G_UNLIKELY (result != ARCHIVE_OK))
+  else if ((result = archive_write_set_format (ar, LP_PACK_FORMAT)), G_UNLIKELY (result != ARCHIVE_OK))
     g_set_error (error, LP_PACK_BUILDER_ERROR, LP_PACK_BUILDER_ERROR_OPEN, "archive_write_set_format()!: %s", archive_error_string (ar));
   else if ((result = archive_write_open2 (ar, &writer, NULL, on_write, NULL, NULL)), G_UNLIKELY (result != ARCHIVE_OK))
     g_set_error (error, LP_PACK_BUILDER_ERROR, LP_PACK_BUILDER_ERROR_OPEN, "archive_write_open2()!: %s", archive_error_string (ar));
