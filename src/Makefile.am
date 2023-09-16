@@ -20,13 +20,13 @@ resources_FILES=$(shell $(GLIB_COMPILE_RESOURCES) --generate-dependencies resour
 bin_PROGRAMS=lpacked
 pkglib_LTLIBRARIES=liblpacked.la
 noinst_DATA=$(resources_FILES) 
-noinst_HEADERS=application.h builder.h compat.h package.h 
+noinst_HEADERS=application.h builder.h compat.h package.h reader.h 
 SUFFIXES=.gir .typelib 
 
 liblpacked_la_CFLAGS=$(ARCHIVE_CFLAGS) $(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) -flto 
 liblpacked_la_LDFLAGS=-flto 
 liblpacked_la_LIBADD=$(ARCHIVE_LIBS) $(GIO_LIBS) $(LGI_LIBS) $(LUA_LIBS) 
-liblpacked_la_SOURCES=application.c builder.c compat.c package.c 
+liblpacked_la_SOURCES=application.c builder.c compat.c package.c reader.c 
 
 lpacked_CFLAGS=$(ARCHIVE_CFLAGS) $(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) -flto 
 lpacked_LDADD=$(ARCHIVE_LIBS) $(GIO_LIBS) $(LGI_LIBS) $(LUA_LIBS) liblpacked.la 
@@ -52,9 +52,10 @@ INTROSPECTION_COMPILER_ARGS=--includedir=$(srcdir)
 
 LPacked.gir: liblpacked.la
 LPacked_gir_CFLAGS=$(ARCHIVE_CFLAGS) $(GIO_CFLAGS) $(LGI_CFLAGS) $(LUA_CFLAGS) 
-LPacked_gir_FILES=application.c application.h builder.c builder.h package.c package.h 
+LPacked_gir_FILES=application.c application.h builder.c builder.h package.c package.h reader.c reader.h 
 LPacked_gir_INCLUDES=Gio-2.0 
 LPacked_gir_LIBS=liblpacked.la  
 LPacked_gir_NAMESPACE=LPacked
 LPacked_gir_VERSION=$(PACKAGE_VERSION_MAJOR).$(PACKAGE_VERSION_MINOR)
-CLEANFILES=LPacked.gir LPacked.typelib 
+
+CLEANFILES=LPacked.gir LPacked.typelib resources.c resources.h 
