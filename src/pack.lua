@@ -91,7 +91,6 @@ do
       local manifest =
         {
           description = desc.description,
-          main = desc.main,
           name = desc.name,
         }
 
@@ -100,24 +99,36 @@ do
       builder:add_from_bytes ("/manifest.lua", bytes)
     end
 
-    for path, files in pairs (desc.pack) do
-      if (type (path) ~= 'string' or type (files) ~= 'table') then
-        error ([[descriptor field 'pack' table must contain string-table pairs]])
-      else
-        for alias, filename in pairs (files) do
-          if (type (alias) == 'number') then
-            alias = filename
-          end
+    local function addfile (alias, filename, prefix)
+      if (type (alias) == 'number') then
+        alias = filename
+      elseif (type (alias) ~= 'string') then
+        error ([[descriptor field 'pack' is malformed]])
+      end
 
-          local name = Lp.canonicalize_alias (path, alias)
-          local file = Gio.File.new_for_commandline_arg (filename)
-          local info = assert (file:query_info ('standard::size', 0))
-          local stream = assert (file:read ())
+      local name = Lp.canonicalize_alias (prefix, alias)
+      local file = Gio.File.new_for_commandline_arg (filename)
+      local info = assert (file:query_info ('standard::size', 0))
+      local stream = assert (file:read ())
 
-          builder:add_from_stream (name, stream, info:get_size ())
+      builder:add_from_stream (name, stream, info:get_size ())
+    end
+
+    local function addpack (table, prefix)
+      for key, value in pairs (table) do
+        if (type (value) == 'table') then
+          local nextp = GLib.build_filenamev { prefix, key, '/' }
+          local canon = GLib.canonicalize_filename (nextp, prefix)
+          addpack (value, canon)
+        elseif (type (value) == 'string') then
+          addfile (key, value, prefix)
+        else
+          error ([[descriptor field 'pack' is malformed]])
         end
       end
     end
+
+    addpack (desc.pack, '/')
 
     do
       local filename = output or Lp.canonicalize_pack_name (desc.name)
