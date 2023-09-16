@@ -20,6 +20,7 @@
 -->
 <gresources>
   <gresource prefix="/org/hck/lpacked/">
+    <file compressed="false">exec.lua</file>
     <file compressed="false">init.lua</file>
     <file compressed="false">main.lua</file>
     <file compressed="false">pack.lua</file>

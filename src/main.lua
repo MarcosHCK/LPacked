@@ -23,6 +23,7 @@ local Lp = lgi.require('LPacked')
 
 do
   local Gio = lgi.require ('Gio', '2.0')
+  local exec = require ('org.hck.lpacked.exec')
   local pack = require ('org.hck.lpacked.pack')
 
   function lpacked.main (args)
@@ -45,8 +46,14 @@ do
     function app:on_open (files)
       if (self.pack) then
         log.critical ('--pack option does not takes any additional files')
-      else
-        error ('unimplemented')
+      elseif (self.exec) then
+        local file = Gio.File.new_for_commandline_arg (self.exec)
+        local functor = function () exec (file) end
+        local success, reason = xpcall (functor, lpacked.msghandler)
+
+        if (not success) then
+          log.critical (reason)
+        end
       end
     end
   return app:run (args)
