@@ -117,7 +117,10 @@ static int walkpack (LpPackReader* self, Archive* ar, Source* source, Reader* re
   while (TRUE)
     {
       if ((result = archive_read_next_header (ar, &ent)), G_UNLIKELY (result == ARCHIVE_FATAL))
-        report (error, archive_read_next_header, ar, reader);
+        {
+          report (error, archive_read_next_header, ar, reader);
+          break;
+        }
       else if (result == ARCHIVE_EOF)
         {
           result = ARCHIVE_OK;
@@ -132,7 +135,15 @@ static int walkpack (LpPackReader* self, Archive* ar, Source* source, Reader* re
           .hash = g_str_hash (path),
         };
 
-      g_tree_insert (self->vfs, g_slice_dup (File, &template), source_ref (source));
+      if (g_tree_lookup_extended (self->vfs, &template, NULL, NULL) == FALSE)
+        g_tree_insert (self->vfs, g_slice_dup (File, &template), source_ref (source));
+      else
+        {
+          result = ARCHIVE_FATAL;
+          g_set_error (error, LP_PACK_READER_ERROR, LP_PACK_READER_ERROR_SCAN, "duplicated entry '%s'", path);
+          g_free (template.path);
+          break;
+        }
     }
 return result;
 }

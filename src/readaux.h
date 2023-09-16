@@ -159,7 +159,7 @@ return (result);
     else \
       { \
         const GQuark __domain = LP_PACK_READER_ERROR; \
-        const guint __code = LP_PACK_READER_ERROR_WRITE; \
+        const guint __code = LP_PACK_READER_ERROR_SCAN; \
         const gchar* __strerror = archive_error_string (__archive); \
  ; \
         g_set_error (__error, __domain, __code, #funcname "()!: %s", __strerror); \
