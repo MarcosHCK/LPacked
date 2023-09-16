@@ -26,39 +26,86 @@ do
 
   local function exec (main, files)
     local reader = Lp.PackReader ()
-    local manifest
+    local module
 
     for _, file in ipairs (files) do
-      reader:add_from_file (file)
+      assert (reader:add_from_file (file))
     end
 
     assert (reader:contains (main), ('no such file \'%s\''):format (main))
 
+    local function searchpath (name, path, sep, rep)
+      local errors
+      local fullpath
+
+      errors = { '', }
+      rep = rep or '/'
+      sep = sep or '.'
+
+      name = name:gsub ('%' .. sep, rep)
+
+      for template in path:gmatch ('([^;]+)') do
+        fullpath = template:gsub ('?', name)
+
+        if (reader:contains (fullpath)) then
+          return fullpath
+        else
+          table.insert (errors, ('\tno file \'%s\''):format (fullpath))
+        end
+      end
+    return nil, table.concat (errors, '\n')
+    end
+
+    local function loadpath (name)
+      local info = assert (reader:query_info (name, 'standard::size'))
+      local stream = assert (reader:open (name))
+      local left = info:get_size ()
+
+      return load (function ()
+          if (left == 0) then
+            return nil
+          else
+            local bytes = stream:read_bytes (left)
+            local done = bytes:get_size ()
+              left = left - done
+            return bytes:get_data ()
+          end
+        end, '=' .. name)
+    end
+
+    local function searcher (name)
+      local fullpath, reason = searchpath (name, package.path)
+      if (not fullpath) then
+        return reason
+      else
+        local chunk, reason = loadpath (fullpath)
+        return chunk or reason
+      end
+    end
+
     do
-      local chunk
-      local env = { math = { huge = math.huge, } }
-          env = _G
+      package.path = '/?.lua;/?/init.lua'
+      package.cpath = package.cpath
 
-      do
-        local info = assert (reader:query_info (main, 'standard::size'))
-        local stream = assert (reader:open (main))
-        local left = info:get_size ()
+      local loaded = package.loaded
+    ---@diagnostic disable-next-line: deprecated
+      local loaders = package.loaders or package.searchers
 
-        chunk = assert (load (function ()
-            if (left == 0) then
-              return nil
-            else
-              local bytes = stream:read_bytes (left)
-              local done = bytes:get_size ()
-                left = left - done
-              return bytes:get_data ()
-            end
-          end, '=' .. main, 't', env))
+      for key in pairs (loaded) do
+        if (not key:match ('^lgi')) then
+          loaded [key] = nil
+        end
       end
 
-      ---@diagnostic disable-next-line: deprecated
-      manifest = not setfenv and chunk () or setfenv (chunk, env) ()
+      for key in ipairs (loaders) do
+        if (key > 1) then
+          loaders [key] = nil
+        end
+      end
+
+      table.insert (loaders, searcher)
     end
+  return assert (loadpath (main)) ()
   end
 return exec
 end

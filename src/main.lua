@@ -34,7 +34,7 @@ do
         app:open ({}, 'exec')
       elseif (self.pack) then
         local file = Gio.File.new_for_commandline_arg (self.pack)
-        local functor = function () pack (file, self.pack_output) end
+        local functor = function () return pack (file, self.pack_output) end
         local success, reason = xpcall (functor, lpacked.msghandler)
 
         if (not success) then
@@ -47,7 +47,7 @@ do
       if (self.pack) then
         log.critical ('--pack option does not takes any additional files')
       elseif (self.exec) then
-        local functor = function () exec (self.exec, files) end
+        local functor = function () return exec (self.exec, files) end
         local success, reason = xpcall (functor, lpacked.msghandler)
 
         if (not success) then
