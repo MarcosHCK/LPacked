@@ -130,6 +130,12 @@ static int on_close (struct archive* ar, void* user_data)
   GInputStream* stream = G_STRUCT_MEMBER (GInputStream*, user_data, G_STRUCT_OFFSET (Reader, stream));
   int result = ARCHIVE_OK;
 
+  if (stream == NULL)
+    {
+      /* on_open failed previously */
+      return ARCHIVE_FAILED;
+    }
+
   if ((result = g_input_stream_close (stream, NULL, error)), G_UNLIKELY (result == FALSE))
     result = ARCHIVE_FATAL;
 return (g_object_unref (stream), result);
