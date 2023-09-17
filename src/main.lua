@@ -30,7 +30,7 @@ do
 
     function app:on_activate ()
       if (self.exec) then
-        app:open ({}, 'exec')
+        log.critical ('--exec options takes additional files')
       elseif (self.pack) then
         local file = Gio.File.new_for_commandline_arg (self.pack)
         local functor = function () return pack (file, self.pack_output) end
