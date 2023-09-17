@@ -17,16 +17,10 @@
 ]]
 local lgi = require ('lgi')
 local log = lgi.log.domain ('LPacked')
-local lp = lgi.package ('lpacked')
-local Lp = lgi.require ('LPacked')
 local lpacked = {}
 
 do
   local Gio = lgi.require ('Gio', '2.0')
-  local GLib = lgi.require ('GLib', '2.0')
-
-  local package_ = Lp.Package ()
-  local resource_ = Gio.Resource ((...), false)
 
   local function searchpath (name, path, sep, rep)
     local bytes
@@ -42,7 +36,7 @@ do
 
     for template in path:gmatch ('([^;]+)') do
       fullpath = template:gsub ('?', name)
-      bytes, reason = package_:lookup (fullpath)
+      bytes, reason = Gio.resources_lookup_data (fullpath, 0)
 
       if (bytes) then
         return bytes, fullpath
@@ -70,12 +64,8 @@ do
     end
   end
 
-  package_:insert (resource_)
-
 ---@diagnostic disable-next-line: deprecated
   table.insert (package.searchers or package.loaders, searcher)
   package.loaded ['org.hck.lpacked'] = lpacked
-
-  require ('org.hck.lpacked.main')
-return lpacked
+return require ('org.hck.lpacked.main')
 end

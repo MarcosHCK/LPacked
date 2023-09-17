@@ -24,7 +24,6 @@
     <file compressed="false">init.lua</file>
     <file compressed="false">main.lua</file>
     <file compressed="false">pack.lua</file>
-    <file compressed="true">serialization.lua</file>
     <file compressed="true">LPacked.typelib</file>
   </gresource>
 </gresources>

@@ -16,15 +16,14 @@
 -- along with LPacked.  If not, see <http://www.gnu.org/licenses/>.
 ]]
 local lgi = require('lgi')
-local lpacked = require ('org.hck.lpacked')
 local log = lgi.log.domain('LPacked')
-local lp = lgi.package('lpacked')
-local Lp = lgi.require('LPacked')
+local exec = require ('org.hck.lpacked.exec')
+local pack = require ('org.hck.lpacked.pack')
+local lpacked = require ('org.hck.lpacked')
 
 do
   local Gio = lgi.require ('Gio', '2.0')
-  local exec = require ('org.hck.lpacked.exec')
-  local pack = require ('org.hck.lpacked.pack')
+  local Lp = lgi.require('LPacked')
 
   function lpacked.main (args)
     local app = Lp.Application.new ()

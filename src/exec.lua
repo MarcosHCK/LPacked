@@ -16,17 +16,13 @@
 -- along with LPacked.  If not, see <http://www.gnu.org/licenses/>.
 ]]
 local lgi = require('lgi')
-local lpacked = require ('org.hck.lpacked')
-local log = lgi.log.domain('LPacked')
-local lp = lgi.package('lpacked')
-local Lp = lgi.require('LPacked')
+local log = lgi.log.domain ('LPacked')
 
 do
-  local Gio = lgi.require ('Gio', '2.0')
+  local Lp = lgi.require ('LPacked')
 
   local function exec (main, files)
     local reader = Lp.PackReader ()
-    local module
 
     for _, file in ipairs (files) do
       assert (reader:add_from_file (file))
