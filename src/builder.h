@@ -14,25 +14,40 @@
  * You should have received a copy of the GNU General Public License
  * along with LPacked. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __LPACKED_BUILDER__
-#define __LPACKED_BUILDER__ 1
+#ifndef __LP_PACK_BUILDER__
+#define __LP_PACK_BUILDER__ 1
 #include <gio/gio.h>
-#include <gvdb/gvdb-builder.h>
+
+#define LP_TYPE_PACK_BUILDER (lp_pack_builder_get_type ())
+#define LP_PACK_BUILDER_ERROR (lp_pack_builder_error_quark ())
+
+typedef enum
+{
+  LP_PACK_BUILDER_ERROR_FAILED,
+  LP_PACK_BUILDER_ERROR_OPEN,
+  LP_PACK_BUILDER_ERROR_WRITE,
+  LP_PACK_BUILDER_ERROR_CLOSE,
+} LpPackBuilderError;
 
 #if __cplusplus
 extern "C" {
 #endif // __cplusplus
 
-  GType lpacked_builder_get_type (void) G_GNUC_CONST;
-  void lpacked_builder_add_source_from_bytes (GHashTable* builder, const gchar* name, GBytes* bytes);
-  void lpacked_builder_add_source_from_file (GHashTable* builder, const gchar* name, const gchar* filename, GError** error);
-  void lpacked_builder_add_source_from_gfile (GHashTable* builder, const gchar* name, GFile* file, GError** error);
-  void lpacked_builder_add_source_from_stream (GHashTable* builder, const gchar* name, GInputStream* stream, GError** error);
-  GHashTable* lpacked_builder_new ();
-  gboolean lpacked_builder_write (GHashTable* builder, const gchar* filename, GError** error);
+  G_DECLARE_FINAL_TYPE (LpPackBuilder, lp_pack_builder, LP, PACK_BUILDER, GObject);
+
+  GQuark lp_pack_builder_error_quark (void) G_GNUC_CONST;
+
+  gchar* lp_canonicalize_alias (const gchar* path, const gchar* alias);
+  gchar* lp_canonicalize_pack_name (const gchar* pack_name);
+  void lp_pack_builder_add_from_bytes (LpPackBuilder* builder, const gchar* path, GBytes* bytes);
+  gboolean lp_pack_builder_add_from_file (LpPackBuilder* builder, const gchar* path, GFile* file, GError** error);
+  gboolean lp_pack_builder_add_from_filename (LpPackBuilder* builder, const gchar* path, const gchar* filename, GError** error);
+  void lp_pack_builder_add_from_stream (LpPackBuilder* builder, const gchar* path, GInputStream* stream, gsize size);
+  LpPackBuilder* lp_pack_builder_new ();
+  gboolean lp_pack_builder_write_to_stream (LpPackBuilder* builder, GOutputStream* stream, GError** error);
 
 #if __cplusplus
 }
 #endif // __cplusplus
 
-#endif // __LPACKED_BUILDER__
+#endif // __LP_PACK_BUILDER__

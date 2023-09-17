@@ -15,206 +15,190 @@
  * along with LPacked. If not, see <http://www.gnu.org/licenses/>.
  */
 #include <config.h>
-#include <blob.h>
-#include <builder.h>
-#include <descriptor.h>
+#include <compat.h>
+#include <girepository.h>
+#include <glib.h>
+#include <lua-lgi.h>
+#include <package.h>
+#include <resources.h>
 
-#define _g_array_unref0(var) ((var == NULL) ? NULL : (var = (g_array_unref (var), NULL)))
-#define _g_object_unref0(var) ((var == NULL) ? NULL : (var = (g_object_unref (var), NULL)))
-
-struct _LPackedApplication
-{
-  GApplication parent;
-
-  /*<private>*/
-  GOptionEntry* execute_entries;
-  GOptionEntry* main_entries;
-  GOptionEntry* pack_entries;
-
-  const gchar* execute;
-  const gchar* pack;
-  const gchar* pack_output;
-};
-
-struct _LPackedApplicationClass
-{
-  GApplicationClass parent;
-};
-
-G_DECLARE_FINAL_TYPE (LPackedApplication, lpacked_application, LPACKED, APPLICATION, GApplication);
-G_DEFINE_FINAL_TYPE (LPackedApplication, lpacked_application, G_TYPE_APPLICATION);
+static int doinit (lua_State* L);
+static int msghandler (lua_State* L);
+static int require (lua_State* L);
+static int typelib (lua_State* L);
 
 int main (int argc, char* argv[])
 {
-  gpointer app = g_object_new (lpacked_application_get_type (), NULL);
-  gint result = g_application_run (app, argc, argv);
-return (g_object_unref (app), result);
-}
+  lua_State* L = NULL;
+  int i, result = 0;
 
-static void open_vectors (LPackedDescriptor* desc, GHashTable* table, GError** error)
-{
-  GError* tmperr = NULL;
-  GList* list = NULL;
-
-  list = lpacked_descriptor_get_aliases (desc);
-  list = g_list_sort (list, (GCompareFunc) g_strcmp0);
-
-  for (; list; list = list->next)
+  if ((L = luaL_newstate ()) == NULL)
     {
-      const gchar* alias = list->data;
-      const gchar* file = lpacked_descriptor_get_file_by_alias (desc, alias);
-
-      if ((lpacked_builder_add_source_from_file (table, alias, file, &tmperr)), G_UNLIKELY (tmperr != NULL))
-        {
-          g_propagate_error (error, tmperr);
-          break;
-        }
+      g_error ("(" G_STRLOC ") luaL_newstate()!");
+      g_assert_not_reached ();
     }
+
+  lp_resources_register_resource ();
+
+  lua_gc (L, LUA_GCSTOP, -1);
+  luaL_openlibs (L);
+  lua_gc (L, LUA_GCRESTART, 0);
+  lua_settop (L, 0);
+
+  lua_getglobal (L, "package");
+
+  lua_getfield (L, -1, "path");
+  lua_pushliteral (L, ";/?.lua;/?/init.lua");
+  lua_concat (L, 2);
+  lua_setfield (L, -2, "path");
+
+  lua_getfield (L, -1, "preload");
+  lua_pushcfunction (L, luaopen_lgi_corelgilua51);
+  lua_setfield (L, -2, "lgi.corelgilua51");
+  lua_pop (L, 2);
+
+  lua_pushcfunction (L, msghandler);
+  lua_pushcfunction (L, doinit);
+
+  lua_createtable (L, argc, 0);
+
+  for (i = 0; i < argc; ++i)
+    {
+      lua_pushstring (L, argv [i]);
+      lua_rawseti (L, -2, i + 1);
+    }
+
+  switch ((result = lua_pcall (L, 1, 1, 1)))
+    {
+      case LUA_OK: result = (int) lua_tonumber (L, -1); break;
+      case LUA_ERRRUN: g_critical ("(" G_STRLOC ") lua_pcall()!: %s", lua_tostring (L, -1)); break;
+      case LUA_ERRMEM: g_error ("(" G_STRLOC ") lua_pcall()!: out of memory"); break;
+      case LUA_ERRERR: g_error ("(" G_STRLOC ") lua_pcall()!: msghandler error"); break;
+      default: g_error ("(" G_STRLOC ") lua_pcall()!: unknown error %i", result);
+    }
+return (lua_close (L), result);
 }
 
-static void do_active (LPackedApplication* self, GError** error)
+static int doinit (lua_State* L)
 {
-  GError* tmperr = NULL;
-  GFile* file = NULL;
+  lua_pushcfunction (L, typelib);
+  lua_pushliteral (L, "/org/hck/lpacked/LPacked.typelib");
+  lua_call (L, 1, 0);
+  lua_pushcfunction (L, require);
+  lua_pushliteral (L, "/org/hck/lpacked/init.lua");
+  lua_call (L, 1, 1);
+  lua_pushcfunction (L, msghandler);
+  lua_setfield (L, -2, "msghandler");
+  lua_getfield (L, -1, "main");
+  lua_pushvalue (L, 1);
+  lua_call (L, 1, 1);
+return 1;
+}
 
-  if (self->execute != NULL)
+static int msghandler (lua_State* L)
+{
+  const char* msg = NULL;
+  const char* type = NULL;
+
+  if ((msg = lua_tostring (L, 1)) == NULL)
     {
-      GResource* blob = NULL;
-
-      file = g_file_new_for_commandline_arg (self->execute);
-
-      if ((blob = lpacked_blob_load_from_gfile (file, &tmperr), g_object_unref (file)), G_UNLIKELY (tmperr != NULL))
-        g_propagate_error (error, tmperr);
+      if (luaL_callmeta (L, 1, "__tostring") && lua_isstring (L, -1))
+        return 1;
       else
         {
-          g_resource_unref (blob);
+          type = luaL_typename (L, 1);
+          msg = lua_pushfstring (L, "(error object is a %s value)", type);
         }
     }
-
-  if (self->pack != NULL)
-    {
-      LPackedDescriptor* desc = NULL;
-
-      file = g_file_new_for_commandline_arg (self->pack);
-
-      if ((desc = lpacked_descriptor_new_from_gfile (file, &tmperr), g_object_unref (file)), G_UNLIKELY (tmperr != NULL))
-        g_propagate_error (error, tmperr);
-      else
-        {
-          GHashTable* table = lpacked_builder_new ();
-
-          if ((open_vectors (desc, table, &tmperr)), G_UNLIKELY (tmperr != NULL))
-            g_propagate_error (error, tmperr);
-          else
-            {
-              gboolean byteswap = G_BYTE_ORDER != G_LITTLE_ENDIAN;
-              gchar* output = NULL;
-
-              if (self->pack_output != NULL)
-                output = g_strdup (self->pack_output);
-              else
-                {
-                  GPathBuf buf = G_PATH_BUF_INIT;
-                  gchar* path = NULL;
-
-                  g_path_buf_push (&buf, lpacked_descriptor_get_name (desc));
-                  g_path_buf_set_extension (&buf, "lpack");
-                  output = g_path_buf_clear_to_path (&buf);
-                }
-
-              if ((lpacked_builder_write (table, output, &tmperr), g_free (output)), G_UNLIKELY (tmperr != NULL))
-                g_propagate_error (error, tmperr);
-            }
-
-          g_hash_table_remove_all (table);
-          g_hash_table_unref (table);
-          g_object_unref (desc);
-        }
-    }
+return (luaL_traceback (L, L, msg, 1), 1);
 }
 
-static void lpacked_application_class_activate (GApplication* pself)
+static int require (lua_State* L)
 {
+  GBytes* bytes = NULL;
   GError* tmperr = NULL;
-  LPackedApplication* self = (gpointer) pself;
+  GResource* resource = lp_resources_get_resource ();
+  const gchar* data = NULL;
+  const gchar* path = luaL_checkstring (L, 1);
+  gsize size = 0;
+  int result;
 
-  if ((do_active (self, &tmperr)), G_UNLIKELY (tmperr != NULL))
+  lua_pushliteral (L, "=");
+  lua_pushvalue (L, 1);
+  lua_concat (L, 2);
+
+  if ((bytes = g_resource_lookup_data (resource, path, 0, &tmperr)), G_UNLIKELY (tmperr != NULL))
     {
       const guint code = tmperr->code;
       const gchar* domain = g_quark_to_string (tmperr->domain);
       const gchar* message = tmperr->message;
 
-      g_printerr ("(" G_STRLOC "): %s: %i: %s\n", domain, code, message);
+      lua_pushfstring (L, "%s: %u: %s", domain, code, message);
       g_error_free (tmperr);
+      lua_error (L);
     }
-}
 
-static void lpacked_application_class_finalize (GObject* pself)
-{
-  g_free (G_STRUCT_MEMBER (gpointer, pself, G_STRUCT_OFFSET (LPackedApplication, execute_entries)));
-  g_free (G_STRUCT_MEMBER (gpointer, pself, G_STRUCT_OFFSET (LPackedApplication, main_entries)));
-  g_free (G_STRUCT_MEMBER (gpointer, pself, G_STRUCT_OFFSET (LPackedApplication, pack_entries)));
-  G_OBJECT_CLASS (lpacked_application_parent_class)->finalize (pself);
-}
+  data = g_bytes_get_data (bytes, &size);
+  result = luaL_loadbuffer (L, data, size, lua_tostring (L, -1));
+            g_bytes_unref (bytes);
 
-static void lpacked_application_class_constructed (GObject* pself)
-{
-  LPackedApplication* self = (gpointer) pself;
-  GOptionGroup* execute_group = NULL;
-  GOptionGroup* pack_group = NULL;
-
-  G_OBJECT_CLASS (lpacked_application_parent_class)->constructed (pself);
-
-  const gchar* parameter_string = NULL;
-  const gchar* description = "";
-  const gchar* summary = "";
-  const gchar* translation_domain = "en_US";
-
-  const GOptionEntry execute_entries [] =
+  switch (result)
     {
-      G_OPTION_ENTRY_NULL,
-    };
-
-  const GOptionEntry main_entries [] = 
-    {
-      { "execute", 'e', 0, G_OPTION_ARG_FILENAME, & self->execute, "Execute packed application FILE", "FILE", },
-      { "pack", 'p', 0, G_OPTION_ARG_FILENAME, & self->pack, "Create a packed application from application description in FILE", "FILE", },
-      G_OPTION_ENTRY_NULL,
-    };
-
-  const GOptionEntry pack_entries [] =
-    {
-      { "output", 'o', 0, G_OPTION_ARG_FILENAME, & self->pack_output, "Output packed project into FILE", "FILE", },
-      G_OPTION_ENTRY_NULL,
-    };
-
-  self->execute_entries = g_memdup2 (&execute_entries, sizeof (execute_entries));
-  self->main_entries = g_memdup2 (&main_entries, sizeof (main_entries));
-  self->pack_entries = g_memdup2 (&pack_entries, sizeof (pack_entries));
-
-  execute_group = g_option_group_new ("execute", "Execute mode specific options", "Show execute mode specific options", NULL, NULL);
-  pack_group = g_option_group_new ("pack", "Pack mode specific options", "Show pack mode specific options", NULL, NULL);
-
-  g_application_add_main_option_entries (G_APPLICATION (pself), self->main_entries);
-  g_application_set_option_context_description (G_APPLICATION (pself), description);
-  g_application_set_option_context_parameter_string (G_APPLICATION (pself), parameter_string);
-  g_application_set_option_context_summary (G_APPLICATION (pself), summary);
-
-  g_option_group_add_entries (execute_group, self->execute_entries);
-  g_option_group_set_translation_domain (execute_group, translation_domain);
-  g_application_add_option_group (G_APPLICATION (pself), execute_group);
-  g_option_group_add_entries (pack_group, self->pack_entries);
-  g_option_group_set_translation_domain (pack_group, translation_domain);
-  g_application_add_option_group (G_APPLICATION (pself), pack_group);
+      case LUA_OK: lua_pushlightuserdata (L, resource); break;
+      case LUA_ERRSYNTAX: lua_error (L);
+      case LUA_ERRMEM: g_error ("(" G_STRLOC ") luaL_loadbuffer()!: out of memory"); break;
+      default: g_error ("(" G_STRLOC ") luaL_loadbuffer()!: unknown error %i", result);
+    }
+return (lua_call (L, 1, 1), 1);
 }
 
-static void lpacked_application_class_init (LPackedApplicationClass* klass)
+static int typelib (lua_State* L)
 {
-  G_APPLICATION_CLASS (klass)->activate = lpacked_application_class_activate;
-  G_OBJECT_CLASS (klass)->finalize = lpacked_application_class_finalize;
-  G_OBJECT_CLASS (klass)->constructed = lpacked_application_class_constructed;
-}
+  GBytes* bytes = NULL;
+  GError* tmperr = NULL;
+  GITypelib* itypelib = NULL;
+  GResource* resource = lp_resources_get_resource ();
+  const guint8* data = NULL;
+  const gchar* namespace = NULL;
+  const gchar* path = luaL_checkstring (L, 1);
+  gsize size = 0;
 
-static void lpacked_application_init (LPackedApplication* self)
-{
+  if ((bytes = g_resource_lookup_data (resource, path, 0, &tmperr)), G_UNLIKELY (tmperr != NULL))
+    {
+      const guint code = tmperr->code;
+      const gchar* domain = g_quark_to_string (tmperr->domain);
+      const gchar* message = tmperr->message;
+
+      lua_pushfstring (L, "%s: %u: %s", domain, code, message);
+      g_error_free (tmperr);
+      lua_error (L);
+    }
+
+  data = g_bytes_get_data (bytes, &size);
+
+  if ((itypelib = g_typelib_new_from_const_memory (data, size, &tmperr)), G_UNLIKELY (tmperr != NULL))
+    {
+      const guint code = tmperr->code;
+      const gchar* domain = g_quark_to_string (tmperr->domain);
+      const gchar* message = tmperr->message;
+
+      lua_pushfstring (L, "%s: %u: %s", domain, code, message);
+      g_bytes_unref (bytes);
+      g_error_free (tmperr);
+      lua_error (L);
+    }
+
+  if ((namespace = g_irepository_load_typelib (NULL, itypelib, 0, &tmperr)), G_UNLIKELY (tmperr != NULL))
+    {
+      const guint code = tmperr->code;
+      const gchar* domain = g_quark_to_string (tmperr->domain);
+      const gchar* message = tmperr->message;
+
+      lua_pushfstring (L, "%s: %u: %s", domain, code, message);
+      g_bytes_unref (bytes);
+      g_error_free (tmperr);
+      g_typelib_free (itypelib);
+      lua_error (L);
+    }
+return (lua_pushstring (L, namespace), 1);
 }
