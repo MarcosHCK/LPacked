@@ -21,6 +21,12 @@
 #include <gio/gio.h>
 #include <reader.h>
 
+#define _g_key_file_free0(var) ((var == NULL) ? NULL : (var = (g_key_file_free (var), NULL)))
+
+#define source_blocked_bits (1)
+#define source_type_bites (2)
+#define source_refs_bits ((sizeof (guint) << 3) - (source_blocked_bits + source_type_bites))
+
 typedef struct _File
 {
   gchar* path;
@@ -41,9 +47,11 @@ typedef struct _Reader
 
 typedef struct _Source
 {
-  guint refs : (sizeof (guint) << 3) - 3;
-  guint blocked : 1;
-  guint type : 2;
+  guint refcount : source_refs_bits;
+  guint blocked : source_blocked_bits;
+  guint type : source_type_bites;
+
+  GKeyFile* manifest;
 
   union
   {
@@ -77,14 +85,32 @@ static void file_free (File* file)
   g_slice_free (File, file);
 }
 
+static Source* source_new (guint type, gpointer arg)
+{
+  Source template =
+    {
+      .refcount = 1,
+      .type = type,
+      .manifest = NULL,
+    };
+
+  switch (type)
+    {
+      case source_bytes: template.bytes = g_bytes_ref (arg); break;
+      case source_file: template.file = g_object_ref (arg); break;
+      case source_stream: template.stream = g_object_ref (arg); break;
+    }
+return g_slice_dup (Source, &template);
+}
+
 static Source* source_ref (Source* source)
 {
-  return (++source->refs, source);
+  return (++source->refcount, source);
 }
 
 static void source_unref (Source* source)
 {
-  if (--source->refs == 0)
+  if (--source->refcount == 0)
     {
       switch (source->type)
         {
@@ -93,6 +119,7 @@ static void source_unref (Source* source)
           case source_stream: g_object_unref (source->stream); break;
         }
 
+      _g_key_file_free0 (source->manifest);
       g_slice_free (Source, source);
     }
 }

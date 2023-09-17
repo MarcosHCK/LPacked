@@ -27,6 +27,7 @@ struct _LpPackBuilder
   GObject parent;
 
   /* <private> */
+  GKeyFile* manifest;
   GHashTable* sources;
 };
 
@@ -36,8 +37,18 @@ struct _Source
   gsize size;
 };
 
+enum
+{
+  prop_0,
+  prop_name,
+  prop_description,
+  prop_number,
+};
+
 G_DEFINE_FINAL_TYPE (LpPackBuilder, lp_pack_builder, G_TYPE_OBJECT);
 G_DEFINE_QUARK (lp-pack-builder-error-quark, lp_pack_builder_error);
+
+static GParamSpec* properties [prop_number] = {0};
 
 static void source_free (gpointer ptr)
 {
@@ -54,6 +65,7 @@ static void lp_pack_builder_init (LpPackBuilder* self)
   const GDestroyNotify func3 = g_free;
   const GDestroyNotify func4 = source_free;
 
+  self->manifest = g_key_file_new ();
   self->sources = g_hash_table_new_full (func1, func2, func3, func4);
 }
 
@@ -67,14 +79,45 @@ G_OBJECT_CLASS (lp_pack_builder_parent_class)->dispose (pself);
 static void lp_pack_builder_class_finalize (GObject* pself)
 {
   LpPackBuilder* self = (gpointer) pself;
+  g_key_file_free (self->manifest);
   g_hash_table_unref (self->sources);
 G_OBJECT_CLASS (lp_pack_builder_parent_class)->finalize (pself);
+}
+
+static void lp_pack_builder_class_get_property (GObject* pself, guint property_id, GValue* value, GParamSpec* pspec)
+{
+  LpPackBuilder* self = (gpointer) pself;
+
+  switch (property_id)
+    {
+      default: G_OBJECT_WARN_INVALID_PROPERTY_ID (pself, property_id, pspec); break;
+      case prop_name: g_value_take_string (value, g_key_file_get_string (self->manifest, LP_PACK_MANIFEST_GROUP, LP_PACK_MANIFEST_KEY_NAME, NULL)); break;
+      case prop_description: g_value_take_string (value, g_key_file_get_string (self->manifest, LP_PACK_MANIFEST_GROUP, LP_PACK_MANIFEST_KEY_DESCRIPTION, NULL)); break;
+    }
+}
+
+static void lp_pack_builder_class_set_property (GObject* pself, guint property_id, const GValue* value, GParamSpec* pspec)
+{
+  LpPackBuilder* self = (gpointer) pself;
+
+  switch (property_id)
+    {
+      default: G_OBJECT_WARN_INVALID_PROPERTY_ID (pself, property_id, pspec); break;
+      case prop_name: g_key_file_set_string (self->manifest, LP_PACK_MANIFEST_GROUP, LP_PACK_MANIFEST_KEY_NAME, g_value_get_string (value)); break;
+      case prop_description: g_key_file_set_string (self->manifest, LP_PACK_MANIFEST_GROUP, LP_PACK_MANIFEST_KEY_DESCRIPTION, g_value_get_string (value)); break;
+    }
 }
 
 static void lp_pack_builder_class_init (LpPackBuilderClass* klass)
 {
   G_OBJECT_CLASS (klass)->dispose = lp_pack_builder_class_dispose;
   G_OBJECT_CLASS (klass)->finalize = lp_pack_builder_class_finalize;
+  G_OBJECT_CLASS (klass)->get_property = lp_pack_builder_class_get_property;
+  G_OBJECT_CLASS (klass)->set_property = lp_pack_builder_class_set_property;
+
+  properties [prop_name] = g_param_spec_string ("name", "name", "name", NULL, G_PARAM_STATIC_STRINGS | G_PARAM_READWRITE);
+  properties [prop_description] = g_param_spec_string ("description", "description", "description", NULL, G_PARAM_STATIC_STRINGS | G_PARAM_READWRITE);
+  g_object_class_install_properties (G_OBJECT_CLASS (klass), prop_number, properties);
 }
 
 /**
@@ -271,6 +314,60 @@ return (la_ssize_t) wrote;
       } \
   } G_STMT_END
 
+static int begin_file (Archive* ar, const gchar* name, gsize size, Writer* writer, GError** error)
+{
+  ArchiveEntry* ent = NULL;
+  const gchar* path = NULL;
+  int result;
+
+  ent = archive_entry_new2 (ar);
+  path = g_path_skip_root (name);
+
+  archive_entry_set_pathname (ent, path);
+  archive_entry_set_size (ent, size);
+  archive_entry_set_filetype (ent, S_IFREG);
+  archive_entry_set_perm (ent, 0644);
+
+  if ((result = archive_write_header (ar, ent)), G_LIKELY (result == ARCHIVE_OK))
+    archive_entry_free (ent);
+  else
+    {
+      archive_entry_free (ent);
+      report (error, archive_write_header, ar, writer);
+    }
+return result;
+}
+
+static int write_manifest (LpPackBuilder* self, Archive* ar, Writer* writer, GError** error)
+{
+  gchar* data = NULL;
+  gsize wrote, size = 0;
+  const gchar* path;
+  int result;
+
+  data = g_key_file_to_data (self->manifest, &size, NULL);
+  path = G_DIR_SEPARATOR_S LP_PACK_MANIFEST_PATH;
+
+  if ((result = begin_file (ar, path, size, writer, error)), G_UNLIKELY (result != ARCHIVE_OK))
+    {
+      g_free (data);
+      return result;
+    }
+
+  if ((wrote = archive_write_data (ar, data, size), g_free (data)), G_UNLIKELY (wrote < 0))
+    {
+      report (error, archive_write_data, ar, writer);
+      return result;
+    }
+
+  if ((result = archive_write_finish_entry (ar)), G_UNLIKELY (result != ARCHIVE_OK))
+    {
+      report (error, archive_write_finish_entry, ar, writer);
+      return result;
+    }
+return result;
+}
+
 static int write_archive (LpPackBuilder* self, Archive* ar, Writer* writer, GError** error)
 {
   GError* tmperr = NULL;
@@ -278,28 +375,17 @@ static int write_archive (LpPackBuilder* self, Archive* ar, Writer* writer, GErr
   const gchar* name = NULL;
   const Source* source = NULL;
   gchar buffer [512];
-  gint result = ARCHIVE_OK;
+  gint result;
+
+  if ((result = write_manifest (self, ar, writer, error)), G_UNLIKELY (result != ARCHIVE_OK))
+    return result;
 
   g_hash_table_iter_init (&iter, self->sources);
 
   while (g_hash_table_iter_next (&iter, (gpointer*) &name, (gpointer*) &source))
     {
-      ArchiveEntry* ent = archive_entry_new2 (ar);
-      const gchar* path = g_path_skip_root (name);
-
-      archive_entry_set_pathname (ent, path);
-      archive_entry_set_size (ent, source->size);
-      archive_entry_set_filetype (ent, S_IFREG);
-      archive_entry_set_perm (ent, 0644);
-
-      if ((result = archive_write_header (ar, ent)), G_LIKELY (result == ARCHIVE_OK))
-        archive_entry_free (ent);
-      else
-        {
-          archive_entry_free (ent);
-          report (error, archive_write_header, ar, writer);
-          break;
-        }
+      if ((result = begin_file (ar, name, source->size, writer, error)), G_UNLIKELY (result != ARCHIVE_OK))
+        break;
 
       while (TRUE)
         {

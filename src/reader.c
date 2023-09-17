@@ -116,7 +116,7 @@ static int walkpack (LpPackReader* self, Archive* ar, Source* source, Reader* re
 
   while (TRUE)
     {
-      if ((result = archive_read_next_header (ar, &ent)), G_UNLIKELY (result == ARCHIVE_FATAL))
+      if ((result = archive_read_next_header (ar, &ent)), G_UNLIKELY (result != ARCHIVE_OK && result != ARCHIVE_EOF))
         {
           report (error, archive_read_next_header, ar, reader);
           break;
@@ -129,20 +129,54 @@ static int walkpack (LpPackReader* self, Archive* ar, Source* source, Reader* re
 
       const gchar* path = archive_entry_pathname_utf8 (ent);
 
-      File template =
+      if (g_str_equal (path, LP_PACK_MANIFEST_PATH) == FALSE)
         {
-          .path = g_strdup (path),
-          .hash = g_str_hash (path),
-        };
+          File template =
+            {
+              .path = g_strdup (path),
+              .hash = g_str_hash (path),
+            };
 
-      if (g_tree_lookup_extended (self->vfs, &template, NULL, NULL) == FALSE)
-        g_tree_insert (self->vfs, g_slice_dup (File, &template), source_ref (source));
+          if (g_tree_lookup_extended (self->vfs, &template, NULL, NULL) == FALSE)
+            g_tree_insert (self->vfs, g_slice_dup (File, &template), source_ref (source));
+          else
+            {
+              result = ARCHIVE_FATAL;
+              g_set_error (error, LP_PACK_READER_ERROR, LP_PACK_READER_ERROR_SCAN, "duplicated entry '%s'", path);
+              g_free (template.path);
+              break;
+            }
+        }
+      else if (source->manifest != NULL)
+        g_set_error_literal (error, LP_PACK_READER_ERROR, LP_PACK_READER_ERROR_MANIFEST, "duplicated manifest");
       else
         {
-          result = ARCHIVE_FATAL;
-          g_set_error (error, LP_PACK_READER_ERROR, LP_PACK_READER_ERROR_SCAN, "duplicated entry '%s'", path);
-          g_free (template.path);
-          break;
+          GKeyFile* keyfile;
+          gsize read, size;
+          gchar* data;
+
+          size = archive_entry_size (ent);
+          data = g_malloc (size);
+
+          if ((result = archive_read_data (ar, data, size)), G_UNLIKELY (result < 0))
+            {
+              g_free (data);
+              report (error, archive_read_data, ar, reader);
+              break;
+            }
+
+          keyfile = g_key_file_new ();
+
+          if ((result = g_key_file_load_from_data (keyfile, data, size, 0, error)), G_UNLIKELY (result == TRUE))
+            g_free (data);
+          else
+            {
+              g_free (data);
+              g_key_file_free (keyfile);
+              break;
+            }
+
+          source->manifest = keyfile;
         }
     }
 return result;
@@ -162,7 +196,12 @@ static gboolean scanpack (LpPackReader* self, Source* source, GError** error)
         closepack (ar, source, &reader, NULL);
       else
         {
-          result = closepack (ar, source, &reader, error);
+          if ((result = closepack (ar, source, &reader, error)), G_LIKELY (result == ARCHIVE_OK))
+          if (source->manifest == NULL)
+            {
+              result = ARCHIVE_FATAL;
+              g_set_error_literal (error, LP_PACK_READER_ERROR, LP_PACK_READER_ERROR_MANIFEST, "missing manifest");
+            }
         }
     }
 return (archive_read_free (ar), result == ARCHIVE_OK);
@@ -184,8 +223,7 @@ gboolean lp_pack_reader_add_from_bytes (LpPackReader* reader, GBytes* bytes, GEr
   g_return_val_if_fail (bytes != NULL, FALSE);
   g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
   LpPackReader* self = (reader);
-  Source template = { .refs = 1, .type = source_bytes, .bytes = g_bytes_ref (bytes), };
-  Source* source = g_slice_dup (Source, &template);
+  Source* source = source_new (source_bytes, bytes);
   gboolean good = scanpack (self, source, error);
 return (source_unref (source), good);
 }
@@ -206,8 +244,7 @@ gboolean lp_pack_reader_add_from_file (LpPackReader* reader, GFile* file, GError
   g_return_val_if_fail (G_IS_FILE (file), FALSE);
   g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
   LpPackReader* self = (reader);
-  Source template = { .refs = 1, .type = source_file, .file = g_object_ref (file), };
-  Source* source = g_slice_dup (Source, &template);
+  Source* source = source_new (source_file, file);
   gboolean good = scanpack (self, source, error);
 return (source_unref (source), good);
 }
@@ -256,8 +293,7 @@ gboolean lp_pack_reader_add_from_stream (LpPackReader* reader, GInputStream* str
   if (G_IS_SEEKABLE (stream) && g_seekable_can_seek (G_SEEKABLE (stream)))
     {
       /* Resetable stream */
-      Source template = { .refs = 1, .blocked = FALSE, .type = source_stream, .stream = g_object_ref (stream), };
-      Source* source = g_slice_dup (Source, &template);
+      Source* source = source_new (source_stream, stream);
       gboolean good = scanpack (self, source, error);
       return (source_unref (source), good);
     }

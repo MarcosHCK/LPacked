@@ -87,17 +87,8 @@ do
 
     builder = Lp.PackBuilder ()
 
-    do
-      local manifest =
-        {
-          description = desc.description,
-          name = desc.name,
-        }
-
-      local data = serialization.serialize (manifest)
-      local bytes = GLib.Bytes (data)
-      builder:add_from_bytes ("/manifest.lua", bytes)
-    end
+    builder.name = desc.name
+    builder.description = desc.description
 
     local function addfile (alias, filename, prefix)
       if (type (alias) == 'number') then
